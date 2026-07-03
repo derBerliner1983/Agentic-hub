@@ -49,6 +49,22 @@ Aktualisieren (zieht neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
 - **Projekt-Launcher** (unter dem Gehirn): Ziel eingeben → der Agent **plant**, **stellt
   spezialisierte Rollen-Agenten ein** (planner/coder/…), **lädt automatisch das passende
   Ollama-Modell**, ein **Verifier prüft** und lässt nachbessern. Ergebnis → `vault/projects/`.
+  Beim Coder werden Code-Blöcke zusätzlich **real syntax-geprüft** (Sandbox), Fehler
+  fließen automatisch in die Nachbesserung.
+
+## Sicherheit
+
+- **Anmeldung mit MFA:** Beim ersten Aufruf richtest du unter `/setup` ein Passwort +
+  **TOTP (QR-Code für die Authenticator-App)** ein. Danach schützt Login + MFA das
+  gesamte HUD, die API und den WebSocket.
+  Reset: `instance/auth.json` auf dem Server löschen. Not-Aus: `AUTH_DISABLED=1`.
+- **Server-Härtung (Install-Option):** `install.sh` fragt beim Erststart, ob der Server
+  abgesichert werden soll — System-Updates + automatische Sicherheitsupdates, Firewall
+  **nur LAN / kein Internet** (inkl. Docker-Ports via DOCKER-USER), SSH-Härtung,
+  fail2ban. Manuell: `sudo scripts/harden.sh`.
+  ⚠ Nicht auf Internet-VPS aktivieren (LAN-only sperrt dich sonst aus).
+- **Empfehlung:** HUD über **HTTPS** (`https://<server-ip>:3443`) nutzen — nötig fürs
+  Mikrofon und verschlüsselt den Login im LAN.
 
 ## Zustände des „Gehirns"
 

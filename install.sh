@@ -27,11 +27,13 @@ mkdir -p "$INSTANCE_DIR"
 # ---------------------------------------------------------------------------
 # Argumente
 # ---------------------------------------------------------------------------
-RECONFIGURE=0; MODE_ARG=""; WANT_OLLAMA=1; WANT_DOCKER=1
+RECONFIGURE=0; MODE_ARG=""; WANT_OLLAMA=1; WANT_DOCKER=1; HARDEN_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reconfigure) RECONFIGURE=1; shift ;;
     --mode) MODE_ARG="${2:-}"; shift 2 ;;
+    --harden) HARDEN_ARG="yes"; shift ;;
+    --no-harden) HARDEN_ARG="no"; shift ;;
     --no-ollama) WANT_OLLAMA=0; shift ;;
     --no-docker) WANT_DOCKER=0; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -157,22 +159,37 @@ choose_mode() {
   case "${c:-1}" in 2) echo both ;; 3) echo kiosk ;; *) echo headless ;; esac
 }
 
-if [[ -f "$CONFIG" && "$RECONFIGURE" -eq 0 && -z "$MODE_ARG" ]]; then
+choose_harden() {
+  [[ -n "$HARDEN_ARG" ]] && { echo "$HARDEN_ARG"; return; }
+  echo "" >&2
+  echo "  Server-Härtung aktivieren? Updates/Patches, Firewall (nur LAN, KEIN" >&2
+  echo "  Internet), SSH-Härtung, fail2ban, Auto-Sicherheitsupdates." >&2
+  echo "  ⚠ NICHT aktivieren auf Cloud-/VPS-Servern, die du übers Internet" >&2
+  echo "    erreichst – sonst sperrst du dich aus!" >&2
+  local c; read -rp "  Härtung aktivieren? [j/N]: " c </dev/tty || true
+  case "${c:-n}" in j|J|y|Y|ja|Ja) echo yes ;; *) echo no ;; esac
+}
+
+if [[ -f "$CONFIG" && "$RECONFIGURE" -eq 0 && -z "$MODE_ARG" && -z "$HARDEN_ARG" ]]; then
   # shellcheck disable=SC1090
-  source "$CONFIG"; ok "Bestehende Konfiguration: MODE=${MODE:-headless} (Update: ./update.sh)"
+  source "$CONFIG"; ok "Bestehende Konfiguration: MODE=${MODE:-headless}, HARDEN=${HARDEN:-no} (Update: ./update.sh)"
 else
   MODE="$(choose_mode)"
+  HARDEN="$(choose_harden)"
   cat > "$CONFIG" <<EOF
 # V.A.U.L.T. Instanz-Konfiguration – wird von Git-Updates NICHT überschrieben.
 MODE=$MODE
 HTTP_PORT=3000
+HTTPS_PORT=3443
 BIND_ADDR=0.0.0.0
+HARDEN=$HARDEN
 INSTALLED_AT=$(date -Iseconds)
 EOF
-  ok "Modus '$MODE' gespeichert in $CONFIG"
+  ok "Modus '$MODE', Härtung '$HARDEN' gespeichert in $CONFIG"
 fi
 # shellcheck disable=SC1090
 source "$CONFIG"
+HTTPS_PORT="${HTTPS_PORT:-3443}"
 
 # ---------------------------------------------------------------------------
 # 5) App-Container starten (sobald docker-compose.yml existiert)
@@ -180,7 +197,8 @@ source "$CONFIG"
 say "App-Dienste"
 if [[ -f "$COMPOSE" ]] && have docker; then
   info "Baue Image (inkl. Voice: faster-whisper + Piper – erster Build lädt Modelle, dauert etwas)…"
-  ( cd "$REPO_DIR" && HTTP_PORT="$HTTP_PORT" BIND_ADDR="$BIND_ADDR" dockercmd compose up -d --build ) \
+  ( cd "$REPO_DIR" && HTTP_PORT="$HTTP_PORT" HTTPS_PORT="$HTTPS_PORT" BIND_ADDR="$BIND_ADDR" \
+      dockercmd compose up -d --build ) \
     && ok "Container gebaut & gestartet" || warn "Container-Start fehlgeschlagen."
 else
   info "docker-compose.yml noch nicht vorhanden – der App-Stack folgt in Phase 1."
@@ -199,6 +217,15 @@ bash "$REPO_DIR/scripts/setup-obsidian.sh" "$MODE" "$REPO_DIR/vault" || warn "Ob
 if [[ "$MODE" == "both" || "$MODE" == "kiosk" ]]; then
   say "Kiosk"
   bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT}" || warn "Kiosk-Setup übersprungen."
+fi
+
+# ---------------------------------------------------------------------------
+# 8) Server-Härtung (nur wenn beim Erststart gewählt)
+# ---------------------------------------------------------------------------
+if [[ "${HARDEN:-no}" == "yes" ]]; then
+  say "Server-Härtung"
+  HTTP_PORT="$HTTP_PORT" HTTPS_PORT="$HTTPS_PORT" bash "$REPO_DIR/scripts/harden.sh" \
+    && ok "Härtung abgeschlossen" || warn "Härtung fehlgeschlagen/übersprungen."
 fi
 
 # ---------------------------------------------------------------------------

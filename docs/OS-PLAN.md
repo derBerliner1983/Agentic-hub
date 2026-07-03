@@ -213,6 +213,13 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 - Plymouth-Boot-Splash (V.A.U.L.T.-Branding)
 - systemd-Units
 
+**Phase 8 – Sicherheit & Härtung**  ✅
+- Verifier-Härtung: echte Code-Checks (Sandbox) + Fehler-Rückkopplung
+- `scripts/harden.sh`: System-Patches, LAN-only-Firewall (ufw + DOCKER-USER),
+  SSH-Härtung, fail2ban, Auto-Updates – als Install-Option
+- HUD-Anmeldung mit Passwort + **MFA (TOTP/QR)**, geschützte API + WebSocket
+  (Details: §13)
+
 **Phase 5 – Voice**  ✅
 - Lokales STT (faster-whisper) + TTS (Piper, deutsche Stimme), „Hold Space to talk",
   Sprach-Trigger für Tasks. Wird beim Image-Build mitinstalliert.
@@ -339,6 +346,45 @@ blockiert der Browser das Mikro (das HUD zeigt dann `MIC.BLOCKED`). Lösungen:
 
 STT/TTS selbst laufen serverseitig und sind vom HTTPS-Thema unabhängig – nur die
 **Aufnahme im Browser** braucht den secure context.
+
+## 13. Sicherheit & Härtung (Phase 8)
+
+### 13.1 Verifier-Härtung (Sandbox-Checks)
+Code aus dem Coder-Agenten wird **real geprüft**, nicht nur per LLM:
+`python → py_compile`, `bash → bash -n`, `javascript → node --check`.
+Fehler erzwingen „nicht ok" und gehen als konkrete Nachbesserungs-Anweisung an den
+Agenten zurück (Schleife). Echte **Ausführung** ist standardmäßig aus
+(`SANDBOX_EXEC=1` aktiviert sie) – bewusst, weil der Container docker.sock für
+Updates gemountet hat.
+
+### 13.2 Server-Härtung (`scripts/harden.sh`)
+Wird beim **Erststart** von `install.sh` als Option angeboten (`HARDEN=yes/no` in
+`instance/config.env`, Updates fragen nie erneut). Inhalt – idempotent:
+1. `apt full-upgrade` + **unattended-upgrades** (System patcht sich selbst weiter)
+2. **ufw**: eingehend alles zu; nur **LAN (RFC1918)** → SSH/HUD-Ports; Internet zu
+3. **DOCKER-USER-Kette**: Docker umgeht ufw – deshalb zusätzlich iptables-Regeln,
+   die published Ports nur aus LAN erlauben (persistiert via iptables-persistent)
+4. **SSH**: MaxAuthTries 3, Root nur mit Key, Passwort-Login wird NUR deaktiviert,
+   wenn SSH-Keys vorhanden sind (Aussperr-Schutz) · **fail2ban** aktiv
+5. **sysctl**-Netzwerk-Härtung (Redirects, Source-Routing, syncookies, …)
+6. **Ollama**: lauscht auf 0.0.0.0, Firewall erlaubt Port 11434 aber nur aus
+   Docker-Netzen (Container erreichen es, LAN/Internet nicht)
+
+⚠ **Nicht auf Cloud-/VPS-Servern aktivieren**, die man übers Internet erreicht –
+die LAN-only-Firewall sperrt einen sonst aus. Gedacht für den Heim-/LAN-Server.
+
+### 13.3 Anmeldung mit MFA (TOTP)
+Das HUD ist ab jetzt **standardmäßig geschützt**:
+- **Ersteinrichtung** unter `/setup`: Passwort (min. 8 Zeichen, PBKDF2-gehasht)
+  + TOTP-Secret per **QR-Code** in eine Authenticator-App (Google Authenticator,
+  Aegis, 2FAS, …), Bestätigung mit erstem Code.
+- **Login** unter `/login`: Passwort + 6-stelliger MFA-Code (RFC 6238).
+- **Session**: HMAC-signierter HttpOnly-Cookie, 12 h. WebSocket prüft ebenfalls.
+- Alles in `instance/auth.json` (gitignored, überlebt Updates).
+- **Notfall-Reset**: `instance/auth.json` auf dem Server löschen → Setup neu.
+- **Escape-Hatch**: `AUTH_DISABLED=1` in der Container-Umgebung schaltet Login ab.
+- Ehrlicher Hinweis: über HTTP (Port 3000) läuft der Cookie unverschlüsselt durchs
+  LAN – für Login + Voice **HTTPS (Port 3443)** benutzen.
 
 ### 10.6 Nächster Bau-Schritt (Vorschlag)
 **Phase 1-Gerüst erzeugen:** `docker-compose.yml`, FastAPI-Orchestrator mit

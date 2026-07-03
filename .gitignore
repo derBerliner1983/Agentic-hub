@@ -26,3 +26,4 @@ vault/.obsidian/cache
 instance/tasks.json
 instance/settings.json
 instance/agents.json
+instance/auth.json

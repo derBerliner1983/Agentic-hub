@@ -5,14 +5,14 @@ import contextlib
 import os
 import subprocess
 
-from fastapi import Body, FastAPI, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, Response
+from fastapi import Body, FastAPI, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .events import EventBus
 from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
-from . import voice, settings as settings_mod, skills as skills_mod, agents as agents_mod
+from . import auth, voice, settings as settings_mod, skills as skills_mod, agents as agents_mod
 from .projects import run_project
 
 app = FastAPI(title="V.A.U.L.T. Orchestrator")
@@ -57,6 +57,78 @@ async def _shutdown() -> None:
     app.state.poller.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await app.state.poller
+
+
+# ---- Anmeldung + MFA --------------------------------------------------------
+_OPEN_PATHS = {"/login", "/setup"}
+_OPEN_PREFIXES = ("/auth/",)
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not auth.required():
+        return await call_next(request)
+    path = request.url.path
+    if path in _OPEN_PATHS or any(path.startswith(p) for p in _OPEN_PREFIXES):
+        return await call_next(request)
+    if not auth.configured():
+        if path.startswith("/api/"):
+            return JSONResponse({"error": "setup required"}, status_code=401)
+        return RedirectResponse("/setup")
+    if auth.verify_session(request.cookies.get(auth.COOKIE)):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return RedirectResponse("/login")
+
+
+@app.get("/setup")
+async def page_setup():
+    if auth.configured():
+        return RedirectResponse("/login")
+    return FileResponse("static/setup.html")
+
+
+@app.get("/login")
+async def page_login():
+    if auth.required() and not auth.configured():
+        return RedirectResponse("/setup")
+    return FileResponse("static/login.html")
+
+
+@app.post("/auth/setup")
+async def auth_setup(data: dict = Body(...)) -> JSONResponse:
+    if auth.configured():
+        return JSONResponse({"ok": False, "error": "bereits eingerichtet"}, status_code=403)
+    pw = data.get("password") or ""
+    if len(pw) < 8:
+        return JSONResponse({"ok": False, "error": "Passwort min. 8 Zeichen"}, status_code=400)
+    return JSONResponse({"ok": True, **auth.start_setup(pw)})
+
+
+@app.post("/auth/setup/verify")
+async def auth_setup_verify(data: dict = Body(...)) -> JSONResponse:
+    if auth.confirm_setup(data.get("setup_token", ""), data.get("code", "")):
+        return JSONResponse({"ok": True})
+    return JSONResponse({"ok": False, "error": "Code falsch"}, status_code=400)
+
+
+@app.post("/auth/login")
+async def auth_login(data: dict = Body(...)) -> JSONResponse:
+    token = auth.login(data.get("password", ""), data.get("code", ""))
+    if not token:
+        return JSONResponse({"ok": False, "error": "Passwort oder Code falsch"}, status_code=401)
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_TTL,
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/auth/logout")
+async def auth_logout() -> JSONResponse:
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE)
+    return resp
 
 
 # ---- Status / Vitals -------------------------------------------------------
@@ -192,6 +264,10 @@ async def api_voice_tts(text: str) -> Response:
 # ---- WebSocket -------------------------------------------------------------
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
+    if auth.required():
+        if not auth.configured() or not auth.verify_session(ws.cookies.get(auth.COOKIE)):
+            await ws.close(code=4401)
+            return
     await ws.accept()
     queue = bus.subscribe()
     await ws.send_json(await _status_snapshot())

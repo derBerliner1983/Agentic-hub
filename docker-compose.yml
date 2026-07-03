@@ -28,8 +28,8 @@ services:
     depends_on:
       - orchestrator
     ports:
-      - "${HTTP_PORT:-3000}:80"     # HTTP  (HUD)
-      - "${HTTPS_PORT:-3443}:443"   # HTTPS (nötig fürs Browser-Mikro / Voice)
+      - "${BIND_ADDR:-0.0.0.0}:${HTTP_PORT:-3000}:80"     # HTTP  (HUD)
+      - "${BIND_ADDR:-0.0.0.0}:${HTTPS_PORT:-3443}:443"   # HTTPS (Browser-Mikro / Voice)
     volumes:
       - ./services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

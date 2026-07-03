@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .events import EventBus
 from .providers.ollama import OllamaProvider
-from . import agents, skills
+from . import agents, skills, sandbox
 
 VAULT_DIR = Path(os.environ.get("VAULT_DIR", "/vault"))
 MAX_FIX_ROUNDS = 2
@@ -49,15 +49,31 @@ async def _run_agent(role: str, instruction: str, ollama: OllamaProvider, bus: E
     return await ollama.generate(prompt, model=model, system=agent["system"])
 
 
-async def _verify(instruction: str, result: str, ollama: OllamaProvider, bus: EventBus) -> tuple[bool, str]:
+async def _verify(instruction: str, result: str, ollama: OllamaProvider, bus: EventBus,
+                  code_report: dict | None = None) -> tuple[bool, str]:
+    """Zweistufige Prüfung: 1) harte Code-Checks (Sandbox), 2) LLM-Review.
+
+    Schlagen die Sandbox-Checks fehl, ist das Ergebnis IMMER 'nicht ok' –
+    egal was das LLM meint. Die konkreten Fehlermeldungen gehen als
+    Nachbesserungs-Anweisung zurück an den Agenten.
+    """
+    hard_errors = (code_report or {}).get("errors") or []
+    report_text = sandbox.format_report(code_report) if code_report else ""
+
     agent = agents.get_agent("verifier")
     await ollama.ensure_model(agent["model"], bus)
-    check = await ollama.generate(
-        f"Aufgabe:\n{instruction}\n\nErgebnis:\n{result}\n\n"
-        f"Erfüllt das Ergebnis die Aufgabe? Antworte mit 'OK' oder 'FEHLER: <Hinweis>'.",
-        model=agent["model"], system=agent["system"])
-    ok = check.strip().upper().startswith("OK")
-    return ok, check.strip()
+    prompt = (f"Aufgabe:\n{instruction}\n\nErgebnis:\n{result}\n\n"
+              + (f"Automatische Code-Prüfung:\n{report_text}\n\n" if report_text else "")
+              + "Erfüllt das Ergebnis die Aufgabe? Antworte mit 'OK' oder 'FEHLER: <Hinweis>'.")
+    check = await ollama.generate(prompt, model=agent["model"], system=agent["system"])
+    llm_ok = check.strip().upper().startswith("OK")
+
+    if hard_errors:
+        feedback = "FEHLER (Code-Checks):\n" + "\n".join(hard_errors)
+        if not llm_ok:
+            feedback += "\n\nZusätzlich (Review): " + check.strip()
+        return False, feedback
+    return llm_ok, check.strip()
 
 
 async def run_project(goal: str, ollama: OllamaProvider, bus: EventBus) -> None:
@@ -94,7 +110,11 @@ async def run_project(goal: str, ollama: OllamaProvider, bus: EventBus) -> None:
         await emit("step", index=i + 1, total=len(steps), role=role)
 
         result = await _run_agent(role, instruction, ollama, bus, context)
-        ok, feedback = await _verify(instruction, result, ollama, bus)
+        report = sandbox.review(result) if role == "coder" else None
+        if report and report["blocks"]:
+            await emit("checking", index=i + 1, blocks=report["blocks"],
+                       errors=len(report["errors"]))
+        ok, feedback = await _verify(instruction, result, ollama, bus, report)
         rounds = 0
         while not ok and rounds < MAX_FIX_ROUNDS:
             rounds += 1
@@ -102,7 +122,8 @@ async def run_project(goal: str, ollama: OllamaProvider, bus: EventBus) -> None:
             result = await _run_agent(
                 role, f"{instruction}\n\nVerbessere gemäß Prüfhinweis: {feedback}",
                 ollama, bus, context)
-            ok, feedback = await _verify(instruction, result, ollama, bus)
+            report = sandbox.review(result) if role == "coder" else None
+            ok, feedback = await _verify(instruction, result, ollama, bus, report)
 
         outputs.append({"role": role, "instruction": instruction, "result": result,
                         "verified": ok})
