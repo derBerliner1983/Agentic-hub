@@ -16,7 +16,25 @@ ein strukturiertes Arbeitssystem macht.
 | 🤖 Automations | `automations/` | Skills, die zeitgesteuert laufen |
 | 📊 Dashboard | `dashboard/` | Klickbare Oberfläche + Observability |
 
-## Schnellstart
+## One-Click-Installation (V.A.U.L.T. OS)
+
+Repo herunterladen und **ein** Skript ausführen – es installiert alles Fehlende
+automatisch (Docker, docker compose, Ollama) und richtet den Betriebsmodus ein:
+
+```bash
+git clone <repo-url> && cd Agentic-hub
+./install.sh          # fragt EINMALIG den Modus (headless/both/kiosk), macht den Rest allein
+```
+
+Aktualisieren (zieht den neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
+
+```bash
+./update.sh
+```
+
+Details: siehe [`docs/OS-PLAN.md`](docs/OS-PLAN.md) (§10 Spezifikation, §11 Installer & Updates).
+
+## Schnellstart (Agentic-Hub-Skripte)
 
 ```bash
 # 1. Dashboard ansehen

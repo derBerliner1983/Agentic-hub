@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 #
-# V.A.U.L.T. Agentic OS – Erstinstallation
+# V.A.U.L.T. Agentic OS – One-Click-Installer
 #
-# Fragt beim ERSTEN Lauf den Betriebsmodus ab (headless / headless+kiosk / kiosk)
-# und speichert ihn in instance/config.env. Bei erneutem Lauf oder beim Update
-# wird NICHT mehr gefragt – die gespeicherte Antwort wird verwendet.
+# Lädt/prüft alle Abhängigkeiten und richtet alles automatisch ein:
+#   • Basis-Tools (curl, git, ca-certificates)
+#   • Docker Engine + docker compose        (falls nicht vorhanden)
+#   • Ollama (lokales Modell, ROCm für AMD) (falls nicht vorhanden)
+#   • fragt EINMALIG den Betriebsmodus ab und speichert ihn
+#   • startet die App-Container (sobald docker-compose.yml existiert)
 #
 # Nutzung:
-#   ./install.sh                # Erstinstallation (interaktiv, falls noch keine Config)
-#   ./install.sh --reconfigure  # Modus neu wählen
-#   ./install.sh --mode headless # nicht-interaktiv (headless|kiosk|both)
+#   ./install.sh                 # alles automatisch (interaktive Modus-Auswahl)
+#   ./install.sh --reconfigure   # Betriebsmodus neu wählen
+#   ./install.sh --mode headless # nicht-interaktiv (headless|both|kiosk)
+#   ./install.sh --no-ollama     # Ollama-Installation überspringen
+#   ./install.sh --no-docker     # Docker-Installation überspringen
 #
 set -euo pipefail
 
@@ -17,107 +22,185 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTANCE_DIR="$REPO_DIR/instance"
 CONFIG="$INSTANCE_DIR/config.env"
 COMPOSE="$REPO_DIR/docker-compose.yml"
-
 mkdir -p "$INSTANCE_DIR"
 
 # ---------------------------------------------------------------------------
 # Argumente
 # ---------------------------------------------------------------------------
-RECONFIGURE=0
-MODE_ARG=""
+RECONFIGURE=0; MODE_ARG=""; WANT_OLLAMA=1; WANT_DOCKER=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reconfigure) RECONFIGURE=1; shift ;;
     --mode) MODE_ARG="${2:-}"; shift 2 ;;
+    --no-ollama) WANT_OLLAMA=0; shift ;;
+    --no-docker) WANT_DOCKER=0; shift ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekanntes Argument: $1" >&2; exit 1 ;;
   esac
 done
 
 # ---------------------------------------------------------------------------
-# Modus bestimmen: gespeicherte Config gewinnt, außer --reconfigure/--mode
+# Hilfsfunktionen
 # ---------------------------------------------------------------------------
-choose_mode() {
-  if [[ -n "$MODE_ARG" ]]; then
-    echo "$MODE_ARG"; return
+say()  { printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+info() { printf '  • %s\n'  "$*"; }
+warn() { printf '  \033[33m⚠\033[0m %s\n' "$*"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# sudo nur wenn nötig / vorhanden
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then SUDO=""; else
+  if have sudo; then SUDO="sudo"; else
+    warn "Kein root und kein sudo – System-Installationen könnten fehlschlagen."; SUDO=""
   fi
-  echo ""
-  echo "  In welchem Modus soll V.A.U.L.T. laufen?"
-  echo "    1) headless        – nur im Netzwerk, Zugriff per Browser (empfohlen)"
-  echo "    2) both            – headless + Kiosk (Vollbild-HUD am Server-Monitor)"
-  echo "    3) kiosk           – nur Kiosk-Vollbild am Server-Monitor"
-  echo ""
-  local choice
-  read -rp "  Auswahl [1/2/3] (Default 1): " choice || true
-  case "${choice:-1}" in
-    1|"") echo "headless" ;;
-    2)    echo "both" ;;
-    3)    echo "kiosk" ;;
-    *)    echo "headless" ;;
-  esac
+fi
+
+# Paketmanager erkennen
+PKG=""
+if have apt-get; then PKG="apt"; fi
+
+APT_UPDATED=0
+apt_update_once() { [[ "$APT_UPDATED" -eq 1 ]] && return 0; $SUDO apt-get update -y && APT_UPDATED=1; }
+ensure_pkg() { # ensure_pkg <cmd> <apt-paketname>
+  local cmd="$1" pkg="$2"
+  have "$cmd" && { ok "$cmd vorhanden"; return 0; }
+  [[ "$PKG" == "apt" ]] || { warn "$cmd fehlt – bitte manuell installieren (kein apt gefunden)."; return 1; }
+  info "installiere $pkg…"; apt_update_once; $SUDO apt-get install -y "$pkg" && ok "$pkg installiert"
+}
+
+# docker evtl. nur mit sudo nutzbar (User noch nicht in docker-Gruppe aktiv)
+dockercmd() {
+  if docker info >/dev/null 2>&1; then docker "$@";
+  elif $SUDO docker info >/dev/null 2>&1; then $SUDO docker "$@";
+  else return 1; fi
+}
+
+# ---------------------------------------------------------------------------
+# 1) Basis-Tools
+# ---------------------------------------------------------------------------
+say "Basis-Tools"
+ensure_pkg curl curl || true
+ensure_pkg git git || true
+[[ "$PKG" == "apt" ]] && { $SUDO apt-get install -y ca-certificates >/dev/null 2>&1 && ok "ca-certificates ok" || true; }
+
+# ---------------------------------------------------------------------------
+# 2) Docker Engine + Compose-Plugin
+# ---------------------------------------------------------------------------
+if [[ "$WANT_DOCKER" -eq 1 ]]; then
+  say "Docker"
+  if have docker; then
+    ok "Docker vorhanden ($(docker --version 2>/dev/null | cut -d, -f1))"
+  else
+    info "Docker nicht gefunden – installiere via offiziellem Skript…"
+    if have curl; then
+      curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && $SUDO sh /tmp/get-docker.sh \
+        && ok "Docker installiert" || warn "Docker-Installation fehlgeschlagen (Netzwerk/Proxy?)."
+    else
+      warn "curl fehlt – kann Docker nicht automatisch installieren."
+    fi
+  fi
+
+  # Dienst aktivieren
+  if have systemctl; then $SUDO systemctl enable --now docker >/dev/null 2>&1 && ok "Docker-Dienst aktiv" || true; fi
+
+  # User in docker-Gruppe (damit später ohne sudo)
+  if have docker && ! groups "${USER:-$(id -un)}" 2>/dev/null | grep -q docker; then
+    $SUDO usermod -aG docker "${USER:-$(id -un)}" 2>/dev/null \
+      && warn "Zur docker-Gruppe hinzugefügt – einmal ab-/anmelden, damit 'docker' ohne sudo geht." || true
+  fi
+
+  # Compose-Plugin sicherstellen
+  if have docker; then
+    if dockercmd compose version >/dev/null 2>&1; then
+      ok "docker compose vorhanden"
+    else
+      info "installiere docker-compose-plugin…"
+      [[ "$PKG" == "apt" ]] && { apt_update_once; $SUDO apt-get install -y docker-compose-plugin \
+        && ok "compose-plugin installiert" || warn "compose-plugin-Installation fehlgeschlagen."; }
+    fi
+  fi
+else
+  info "Docker-Installation übersprungen (--no-docker)."
+fi
+
+# ---------------------------------------------------------------------------
+# 3) Ollama (lokales Modell, AMD/ROCm wird vom Installer erkannt)
+# ---------------------------------------------------------------------------
+if [[ "$WANT_OLLAMA" -eq 1 ]]; then
+  say "Ollama (lokales KI-Modell)"
+  if have ollama; then
+    ok "Ollama vorhanden ($(ollama --version 2>/dev/null | head -1))"
+  else
+    info "Ollama nicht gefunden – installiere via offiziellem Skript (erkennt AMD/ROCm)…"
+    if have curl; then
+      curl -fsSL https://ollama.com/install.sh | $SUDO sh \
+        && ok "Ollama installiert" || warn "Ollama-Installation fehlgeschlagen (Netzwerk/Proxy?)."
+    else
+      warn "curl fehlt – Ollama nicht installiert."
+    fi
+  fi
+  have ollama && info "Später ein Modell laden, z. B.:  ollama pull llama3.1"
+else
+  info "Ollama-Installation übersprungen (--no-ollama)."
+fi
+
+# ---------------------------------------------------------------------------
+# 4) Betriebsmodus – NUR beim Erststart abfragen
+# ---------------------------------------------------------------------------
+say "Betriebsmodus"
+choose_mode() {
+  [[ -n "$MODE_ARG" ]] && { echo "$MODE_ARG"; return; }
+  echo "  1) headless   – nur Netzwerk, Zugriff per Browser (empfohlen)" >&2
+  echo "  2) both       – headless + Kiosk-Vollbild am Server-Monitor"   >&2
+  echo "  3) kiosk      – nur Kiosk-Vollbild am Server-Monitor"          >&2
+  local c; read -rp "  Auswahl [1/2/3] (Default 1): " c </dev/tty || true
+  case "${c:-1}" in 2) echo both ;; 3) echo kiosk ;; *) echo headless ;; esac
 }
 
 if [[ -f "$CONFIG" && "$RECONFIGURE" -eq 0 && -z "$MODE_ARG" ]]; then
   # shellcheck disable=SC1090
-  source "$CONFIG"
-  echo "→ Bestehende Konfiguration gefunden: MODE=${MODE:-headless}"
-  echo "  (Zum Ändern:  ./install.sh --reconfigure   |   Zum Aktualisieren:  ./update.sh)"
+  source "$CONFIG"; ok "Bestehende Konfiguration: MODE=${MODE:-headless} (Update: ./update.sh)"
 else
   MODE="$(choose_mode)"
   cat > "$CONFIG" <<EOF
 # V.A.U.L.T. Instanz-Konfiguration – wird von Git-Updates NICHT überschrieben.
-# Betriebsmodus: headless | both | kiosk
 MODE=$MODE
-# Netzwerk-Port des HUD
 HTTP_PORT=3000
-# LAN-Interface, an das gebunden wird (0.0.0.0 = alle; sicherer: konkrete IP)
 BIND_ADDR=0.0.0.0
-# Beim Erststart gesetzt:
 INSTALLED_AT=$(date -Iseconds)
 EOF
-  echo "→ Modus '$MODE' gespeichert in $CONFIG"
+  ok "Modus '$MODE' gespeichert in $CONFIG"
 fi
-
 # shellcheck disable=SC1090
 source "$CONFIG"
 
 # ---------------------------------------------------------------------------
-# Voraussetzungen prüfen
+# 5) App-Container starten (sobald docker-compose.yml existiert)
 # ---------------------------------------------------------------------------
-echo ""
-echo "== Voraussetzungen =="
-if command -v docker >/dev/null 2>&1; then
-  echo "  ✓ Docker vorhanden"
+say "App-Dienste"
+if [[ -f "$COMPOSE" ]] && have docker; then
+  ( cd "$REPO_DIR" && HTTP_PORT="$HTTP_PORT" BIND_ADDR="$BIND_ADDR" dockercmd compose up -d --build ) \
+    && ok "Container gebaut & gestartet" || warn "Container-Start fehlgeschlagen."
 else
-  echo "  ✗ Docker fehlt. Installieren:  sudo apt-get install -y docker.io docker-compose-plugin"
-fi
-if command -v ollama >/dev/null 2>&1; then
-  echo "  ✓ Ollama vorhanden"
-else
-  echo "  • Ollama noch nicht installiert (ROCm-Setup, siehe docs/OS-PLAN.md §10.1)"
+  info "docker-compose.yml noch nicht vorhanden – der App-Stack folgt in Phase 1."
+  info "install.sh bringt ihn dann automatisch hoch."
 fi
 
 # ---------------------------------------------------------------------------
-# App-Dienste starten (Docker) – sobald docker-compose.yml existiert
-# ---------------------------------------------------------------------------
-echo ""
-echo "== App-Dienste =="
-if [[ -f "$COMPOSE" ]] && command -v docker >/dev/null 2>&1; then
-  ( cd "$REPO_DIR" && HTTP_PORT="$HTTP_PORT" BIND_ADDR="$BIND_ADDR" docker compose up -d --build )
-  echo "  ✓ Container gebaut & gestartet"
-else
-  echo "  • docker-compose.yml noch nicht vorhanden – App-Stack folgt in Phase 1."
-fi
-
-# ---------------------------------------------------------------------------
-# Kiosk einrichten (nur bei MODE=both|kiosk) – host-nah, braucht Monitor
+# 6) Kiosk (nur MODE=both|kiosk)
 # ---------------------------------------------------------------------------
 if [[ "$MODE" == "both" || "$MODE" == "kiosk" ]]; then
-  echo ""
-  echo "== Kiosk =="
-  bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT}" || \
-    echo "  • Kiosk-Setup übersprungen (siehe scripts/setup-kiosk.sh)."
+  say "Kiosk"
+  bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT}" || warn "Kiosk-Setup übersprungen."
 fi
 
-echo ""
-echo "Fertig. HUD (sobald App läuft):  http://<server-ip>:${HTTP_PORT}"
-echo "Modus: $MODE   |   Update jederzeit mit:  ./update.sh"
+# ---------------------------------------------------------------------------
+# Fertig
+# ---------------------------------------------------------------------------
+say "Fertig"
+ok "Modus: $MODE"
+info "HUD (sobald App läuft):  http://<server-ip>:${HTTP_PORT}"
+info "Aktualisieren jederzeit mit:  ./update.sh"
+if have docker && ! groups "${USER:-$(id -un)}" 2>/dev/null | grep -q docker; then
+  warn "Hinweis: einmal ab-/anmelden, damit 'docker' ohne sudo funktioniert."
+fi
