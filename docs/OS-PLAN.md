@@ -38,10 +38,10 @@ Docker ist **kein OS** – es braucht darunter ein echtes Linux. Vor allem:
 | Schicht | Technik |
 |--------|---------|
 | **Host** | Ubuntu Server **24.04 LTS** (bare metal auf dem KI-Server) |
-| **GPU / lokale Modelle** | NVIDIA-Treiber + CUDA + **Ollama** (nativ oder Container mit GPU) |
+| **GPU / lokale Modelle** | AMD-Treiber + **ROCm** + **Ollama** (ROCm-Container oder nativ) |
 | **App-Dienste** | **Docker Compose** (Backend, Frontend, evtl. DB) |
 | **Memory** | **Obsidian-Vault** (Markdown-Ordner auf dem Host, in Container gemountet) |
-| **„OS-Gefühl"** | Auto-Login → Chromium-Kiosk → Vollbild-HUD + Plymouth-Splash |
+| **„OS-Gefühl"** | v1: headless, Zugriff per Browser · später optional Kiosk + Plymouth-Splash |
 
 > **Ubuntu LTS vs. „LTSC":** Es gibt kein „Ubuntu LTSC" (das ist Windows-Sprech).
 > Bei Ubuntu heißt es **LTS** (Long Term Support). Nimm **24.04 LTS** (Support bis
@@ -162,7 +162,7 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 |---------|------|-------|
 | Host-OS | Ubuntu Server 24.04 LTS | stabil, GPU-Support, LTS bis 2029 |
 | Container | Docker + Compose | saubere Trennung, teilbar (GitHub/Zip) |
-| Lokale Modelle | Ollama (+ nvidia-container-toolkit) | GPU, kostenlos, privat |
+| Lokale Modelle | Ollama (+ **ROCm** für AMD) | GPU, kostenlos, privat |
 | Backend | Python **FastAPI** + WebSockets | bestes LLM-Ökosystem, async, einfach |
 | Frontend | **Next.js** + React + Tailwind | schnell, Kiosk-tauglich |
 | Gehirn-Viz | **react-three-fiber / three.js** | echtes WebGL-Partikelnetz |
@@ -216,9 +216,64 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 
 ---
 
-## 9. Offene Punkte (bitte bestätigen)
-1. **GPU-Hersteller?** NVIDIA (CUDA) oder AMD (ROCm) – ändert das lokale Modell-Setup deutlich.
-2. **Anzeige:** Hat der KI-Server einen eigenen Monitor (Kiosk bootet direkt ins HUD)
-   oder greifst du vom Laptop/anderen Gerät per Browser darauf zu?
-3. **v1-Umfang:** Erst das visuelle HUD + Tasks (empfohlen) – oder Voice von Anfang an?
-4. **Provider-Priorität für v1:** Nur Ollama lokal, oder gleich auch Claude/OpenAI-Umschaltung?
+## 9. Offene Punkte – ENTSCHIEDEN ✅
+1. **GPU:** **AMD** → ROCm-Stack (nicht CUDA).
+2. **Anzeige:** **Browser-Zugriff vom anderen Gerät** → Server headless, kein Kiosk in v1.
+3. **v1-Umfang:** **HUD + Tasks + Voice** von Anfang an.
+4. **Provider für v1:** **nur Ollama (lokal)**; Adapter-Interface bleibt offen für Claude/OpenAI/opencode später.
+
+---
+
+## 10. v1 – Festgelegte Spezifikation
+
+### 10.1 Hardware/GPU (AMD + ROCm)
+- Ubuntu 24.04 LTS, offizielles **ROCm** installieren (`amdgpu-install`), User in Gruppen `render` + `video`.
+- **Ollama mit AMD:** entweder nativ (ROCm erkannt) oder Container `ollama/ollama:rocm`
+  mit Zugriff auf `/dev/kfd` und `/dev/dri`.
+- Ältere/nicht offiziell unterstützte Karten brauchen evtl. `HSA_OVERRIDE_GFX_VERSION`.
+  → **Dafür ist Frage 1 im nächsten Schritt: das genaue GPU-Modell** (`lspci | grep -i vga`
+  oder `rocminfo`), damit wir Modellgröße und Override korrekt setzen.
+- Bei 128 GB RAM laufen zur Not auch große Modelle auf CPU – GPU beschleunigt.
+
+### 10.2 Headless + Netzwerk-Zugriff
+- Kein X/Wayland/Kiosk nötig. Frontend + Backend hören im LAN.
+- Zugriff via `http://<server-ip>:3000` vom Laptop/Tablet.
+- **Leichter Schutz:** simples Token/Passwort vor dem HUD (da im Netzwerk erreichbar),
+  Bind bevorzugt aufs LAN-Interface, nicht öffentlich exponieren.
+
+### 10.3 Voice-Architektur (Browser ↔ Server, alles lokal)
+```
+Browser (Laptop/Tablet)                 Server (Ubuntu, AMD)
+──────────────────────                  ─────────────────────
+Mikro (Hold Space) ──audio──►  STT: whisper.cpp  ──text──►  Task/Skill
+                                                              │
+Lautsprecher ◄──audio──  TTS: Piper  ◄──antwort-text──────────┘
+```
+- **STT:** `whisper.cpp` (klein/mittleres Modell) auf dem Server, nimmt Browser-Audio entgegen.
+- **TTS:** **Piper** auf dem Server (lokal, kostenlos, deutsche Stimme verfügbar),
+  Audio wird an den Browser zurückgestreamt.
+- Steuerung wie im Video: **Space halten = sprechen, ESC = stopp.** Status `TTS.STANDBY / TTS.LIVE`.
+- Sprachbefehle mappen auf Tasks (z. B. „Inbox Brief" → Task `inbox-brief`).
+
+### 10.4 „Leer bis verbunden" mit nur Ollama
+- Verbindung = Ollama-Health `GET /api/tags` erfolgreich **und** mindestens ein Modell geladen.
+- Kein Modell/kein Ollama → HUD zeigt `LINK · OFFLINE`, Gehirn leer.
+- Erste erfolgreiche Verbindung → „Boot-up"-Animation, Gehirn erwacht (IDLE/Gold).
+
+### 10.5 Konkreter Ziel-Stack v1
+| Komponente | Technik |
+|-----------|---------|
+| Host | Ubuntu Server 24.04 LTS + ROCm |
+| Lokales Modell | Ollama (ROCm), z. B. `llama3.1` / `qwen2.5` |
+| Backend | FastAPI + WebSocket, Provider-Adapter (nur `ollama` aktiv) |
+| Runner | Task-Engine + `vault/runs/`-Logging |
+| Frontend | Next.js HUD + react-three-fiber Gehirn |
+| Voice | whisper.cpp (STT) + Piper (TTS) |
+| Memory | Obsidian-Vault (Markdown) |
+| Orchestrierung | Docker Compose (+ Ollama nativ oder als ROCm-Container) |
+
+### 10.6 Nächster Bau-Schritt (Vorschlag)
+**Phase 1-Gerüst erzeugen:** `docker-compose.yml`, FastAPI-Orchestrator mit
+Ollama-Adapter + Health-Check + WebSocket, und ein minimales Next.js-HUD, das den
+Verbindungsstatus anzeigt (leer ↔ Gehirn). Danach Schritt für Schritt Tasks,
+Gehirn-Zustände und Voice ergänzen.
