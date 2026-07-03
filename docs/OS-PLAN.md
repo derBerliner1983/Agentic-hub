@@ -190,10 +190,11 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 - Runner + `runs/`-Logging
 - Events `queued/thinking/writing/done`
 
-**Phase 3 – Das HUD (Frontend)**
+**Phase 3 – Das HUD (Frontend)**  ✅ (Grundausbau)
 - Layout: links Vitals, Mitte Gehirn + Primary Directive, rechts Command Deck, unten Audio I/O
-- Neuronales Netz mit den 4 Zuständen + Segment-Leuchten
+- Neuronales Netz mit den 4 Zuständen + Segment-Leuchten (pro Domäne)
 - „Boot-up"-Animation bei erster Verbindung
+- Linke Spalte (System Vitals · Directives · Documents) aus echten Vault-Daten (`/api/vitals`)
 
 **Phase 4 – Appliance / „OS-Gefühl"**
 - Auto-Login + Chromium-Kiosk → Vollbild-HUD beim Boot

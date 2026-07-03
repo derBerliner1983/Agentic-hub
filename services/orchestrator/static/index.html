@@ -22,6 +22,20 @@
       <div class="clock" id="clock">--:--</div>
     </header>
 
+    <!-- Links: System Vitals / Directives / Documents -->
+    <aside class="vitals">
+      <div class="v-head">SYSTEM VITALS</div>
+      <div class="stat"><span class="stat-label">MODELL</span><span class="stat-val" id="v-model">—</span></div>
+      <div class="stat"><span class="stat-label">VAULT-NOTIZEN</span><span class="stat-val" id="v-notes">—</span></div>
+      <div class="stat"><span class="stat-label">RUNS HEUTE</span><span class="stat-val" id="v-runs">—</span></div>
+
+      <div class="v-head">DIRECTIVES <span class="v-meta">TOP 3</span></div>
+      <ul class="directives" id="v-directives"><li class="muted">—</li></ul>
+
+      <div class="v-head">DOCUMENTS <span class="v-meta">RECENT</span></div>
+      <ul class="documents" id="v-documents"><li class="muted">—</li></ul>
+    </aside>
+
     <!-- Mitte: das Gehirn -->
     <main class="stage">
       <canvas id="brain"></canvas>

@@ -1,5 +1,5 @@
-/* V.A.U.L.T. HUD – verbindet sich per WebSocket mit dem Orchestrator,
- * steuert Gehirn-Zustand, Command Deck und Statuszeile.
+/* V.A.U.L.T. HUD – WebSocket-Client: steuert Gehirn, Command Deck,
+ * Statuszeile und die linke Vitals-Spalte.
  */
 (function () {
   const brain = new Brain(document.getElementById("brain"));
@@ -22,12 +22,9 @@
   }, 1000);
 
   function setStatusline(coreState) {
-    const core = coreState.toUpperCase();
-    statusline.querySelector('[data-k="core"]').innerHTML = `● CORE · <b>${core}</b>`;
-    statusline.querySelector('[data-k="link"]').innerHTML =
-      `LINK · <b>${connected ? "ONLINE" : "OFFLINE"}</b>`;
-    statusline.querySelector('[data-k="runner"]').innerHTML =
-      `RUNNER · <b>${activeTasks > 0 ? "WORKING" : "IDLE"}</b>`;
+    statusline.querySelector('[data-k="core"]').innerHTML = `● CORE · <b>${coreState.toUpperCase()}</b>`;
+    statusline.querySelector('[data-k="link"]').innerHTML = `LINK · <b>${connected ? "ONLINE" : "OFFLINE"}</b>`;
+    statusline.querySelector('[data-k="runner"]').innerHTML = `RUNNER · <b>${activeTasks > 0 ? "WORKING" : "IDLE"}</b>`;
   }
 
   function applyState() {
@@ -44,7 +41,7 @@
   }
 
   function renderDeck(tasks) {
-    if (deck.childElementCount === tasks.length) return; // nur einmal bauen
+    if (deck.childElementCount === tasks.length) return;
     deck.innerHTML = "";
     tasks.forEach((t) => {
       const btn = document.createElement("button");
@@ -79,7 +76,6 @@
   }
 
   function handleTask(msg) {
-    // Karte oben anzeigen
     taskcard.hidden = false;
     taskTitle.textContent = (msg.title || msg.id || "").toUpperCase();
     const labels = { queued: "eingereiht", thinking: "denkt …", writing: "schreibt …",
@@ -87,15 +83,45 @@
     taskState.textContent = labels[msg.state] || msg.state;
 
     const btn = deck.querySelector(`.deck-btn[data-id="${msg.id}"]`);
-    if (msg.state === "queued" || msg.state === "thinking" || msg.state === "writing") {
+    if (["queued", "thinking", "writing"].includes(msg.state)) {
       activeTasks = Math.max(activeTasks, 1);
+      if (msg.domain) brain.setActiveDomain(msg.domain);   // Hirn-Segment aktivieren
     }
     if (msg.state === "done" || msg.state === "error") {
       activeTasks = Math.max(0, activeTasks - 1);
       if (btn) btn.classList.remove("running");
+      if (activeTasks === 0) brain.setActiveDomain(null);
+      if (msg.state === "done") loadVitals();                // Vault hat sich geändert
       setTimeout(() => { if (activeTasks === 0) taskcard.hidden = true; }, 3500);
     }
     applyState();
+  }
+
+  // ---- linke Spalte: Vitals ----------------------------------------------
+  async function loadVitals() {
+    try {
+      const r = await fetch("/api/vitals");
+      const v = await r.json();
+      document.getElementById("v-model").textContent = v.model || "—";
+      document.getElementById("v-notes").textContent = v.notes;
+      document.getElementById("v-runs").textContent = v.runs_today;
+
+      const dir = document.getElementById("v-directives");
+      dir.innerHTML = (v.directives && v.directives.length)
+        ? v.directives.map((d) => `<li class="${d.done ? "done" : ""}">${escapeHtml(d.text)}</li>`).join("")
+        : '<li class="muted">keine Directives</li>';
+
+      const docs = document.getElementById("v-documents");
+      docs.innerHTML = (v.recent_docs && v.recent_docs.length)
+        ? v.recent_docs.map((d) =>
+            `<li><span class="doc-name">${escapeHtml(d.name)}</span><span class="doc-ago">${d.ago}</span></li>`).join("")
+        : '<li class="muted">noch keine Dokumente</li>';
+    } catch (_) { /* Server evtl. noch nicht bereit */ }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
   function connect() {
@@ -108,11 +134,13 @@
     };
     ws.onclose = () => {
       connected = false; applyState(); setDeckEnabled();
-      setTimeout(connect, 2000); // reconnect
+      setTimeout(connect, 2000);
     };
     ws.onerror = () => ws.close();
   }
 
   applyState();
   connect();
+  loadVitals();
+  setInterval(loadVitals, 12000);
 })();

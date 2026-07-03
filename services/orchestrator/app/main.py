@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from .events import EventBus
 from .providers.ollama import OllamaProvider
 from .tasks import run_task, task_list
+from .vitals import build_vitals
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434")
 
@@ -67,6 +68,13 @@ async def _shutdown() -> None:
 @app.get("/api/status")
 async def api_status() -> JSONResponse:
     return JSONResponse(await _status_snapshot())
+
+
+@app.get("/api/vitals")
+async def api_vitals() -> JSONResponse:
+    health = await provider.health()
+    model = health["models"][0] if health["models"] else None
+    return JSONResponse(build_vitals(model))
 
 
 @app.post("/api/tasks/{task_id}/run")
