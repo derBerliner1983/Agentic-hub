@@ -1,3 +1,6 @@
+# Instanz-Konfiguration (Betriebsmodus, Ports) – überlebt Git-Updates
+instance/config.env
+
 # Logs der Automationen
 automations/*.log
 

@@ -272,6 +272,39 @@ Lautsprecher ◄──audio──  TTS: Piper  ◄──antwort-text────
 | Memory | Obsidian-Vault (Markdown) |
 | Orchestrierung | Docker Compose (+ Ollama nativ oder als ROCm-Container) |
 
+## 11. Installer & Update-Strategie
+
+### 11.1 Ubuntu-nativ oder Docker? → Hybrid, Docker-zentriert
+- **App-Dienste (Frontend, Backend, Voice) in Docker.** Vorteil: git-Updates sind
+  sauber und reproduzierbar (`git pull && docker compose up -d --build`), rollender
+  Neustart = „Live-Update".
+- **Ollama** mit ROCm nativ auf dem Host oder als ROCm-Container.
+- **Kiosk** ist der einzige host-nahe Teil (braucht ein Display), deshalb außerhalb
+  von Docker als systemd-Unit (`scripts/setup-kiosk.sh`).
+
+### 11.2 Betriebsmodus – Auswahl NUR beim Erststart
+`install.sh` fragt beim ersten Lauf den Modus ab und speichert ihn:
+
+| Modus | Bedeutung |
+|-------|-----------|
+| `headless` | nur im Netzwerk, Zugriff per Browser (empfohlen, dein Setup) |
+| `both` | headless **und** Kiosk-Vollbild am Server-Monitor |
+| `kiosk` | nur Kiosk-Vollbild am Server-Monitor |
+
+- Antwort landet in **`instance/config.env`** (gitignored → **Git-Update überschreibt sie nicht**).
+- Bei erneutem `install.sh` oder bei `update.sh` wird **nicht mehr gefragt**.
+- Neu wählen: `./install.sh --reconfigure` · nicht-interaktiv: `./install.sh --mode headless`.
+
+### 11.3 Update aus Git (auch „live")
+`./update.sh`:
+1. `git fetch` + `git reset --hard origin/<branch>` → exakt auf Remote-Stand
+   (deine `instance/config.env` bleibt, weil gitignored).
+2. `docker compose up -d --build` → Container rollend neu (Live-Update).
+3. Kiosk-Unit bei Bedarf auffrischen – **ohne Rückfrage**, Modus ist bekannt.
+
+So kannst du später sogar einen **„UPDATE"-Button** ins HUD legen, der `update.sh`
+auslöst und sich das Repo selbst zieht.
+
 ### 10.6 Nächster Bau-Schritt (Vorschlag)
 **Phase 1-Gerüst erzeugen:** `docker-compose.yml`, FastAPI-Orchestrator mit
 Ollama-Adapter + Health-Check + WebSocket, und ein minimales Next.js-HUD, das den
