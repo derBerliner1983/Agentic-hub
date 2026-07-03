@@ -201,8 +201,10 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 - Plymouth-Boot-Splash (V.A.U.L.T.-Branding)
 - systemd-Units für orchestrator, runner, ollama
 
-**Phase 5 – Voice (optional)**
-- Lokales TTS/STT, „Hold Space to talk", Sprach-Trigger für Tasks
+**Phase 5 – Voice**  ✅
+- Lokales STT (faster-whisper) + TTS (Piper, deutsche Stimme), „Hold Space to talk",
+  Sprach-Trigger für Tasks. Wird beim Image-Build mitinstalliert.
+- Hinweis: Browser-Mikro braucht HTTPS/localhost (siehe §12).
 
 **Phase 6 – Distribution**
 - `docker compose up` + Install-Skript → reproduzierbar & teilbar
@@ -305,6 +307,26 @@ Lautsprecher ◄──audio──  TTS: Piper  ◄──antwort-text────
 
 So kannst du später sogar einen **„UPDATE"-Button** ins HUD legen, der `update.sh`
 auslöst und sich das Repo selbst zieht.
+
+## 12. Voice (Phase 3) – Wichtiger HTTPS-Hinweis
+
+Voice ist gebaut: **STT = faster-whisper**, **TTS = Piper** (deutsche Stimme), beide
+lokal im Orchestrator-Container (werden beim Image-Build via `install.sh`/`update.sh`
+mitinstalliert). Bedienung: **Space halten zum Sprechen**, ESC bricht ab.
+Erkannter Text → Keyword-Matcher → Task läuft → gesprochene Bestätigung.
+
+**Browser-Mikrofon braucht einen „secure context":** `getUserMedia` funktioniert nur
+über **HTTPS** oder **localhost**. Beim Zugriff über `http://<server-ip>:3000` im LAN
+blockiert der Browser das Mikro (das HUD zeigt dann `MIC.BLOCKED`). Lösungen:
+
+1. **Reverse-Proxy mit TLS** vor den Orchestrator (Caddy/nginx) – sauberste Variante,
+   dann `https://vault.local` o. ä.
+2. **SSH-Port-Forwarding** auf den Client: `ssh -L 3000:localhost:3000 server` →
+   Zugriff über `http://localhost:3000` (gilt als secure).
+3. **Kiosk am Server** (MODE=both/kiosk): läuft über localhost, Mikro erlaubt.
+
+STT/TTS selbst laufen serverseitig und sind vom HTTPS-Thema unabhängig – nur die
+**Aufnahme im Browser** braucht den secure context.
 
 ### 10.6 Nächster Bau-Schritt (Vorschlag)
 **Phase 1-Gerüst erzeugen:** `docker-compose.yml`, FastAPI-Orchestrator mit

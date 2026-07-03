@@ -11,14 +11,15 @@ import asyncio
 import contextlib
 import os
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .events import EventBus
 from .providers.ollama import OllamaProvider
 from .tasks import run_task, task_list
 from .vitals import build_vitals
+from . import voice
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434")
 
@@ -81,6 +82,38 @@ async def api_vitals() -> JSONResponse:
 async def api_run_task(task_id: str) -> JSONResponse:
     asyncio.create_task(run_task(task_id, provider, bus))
     return JSONResponse({"ok": True, "task": task_id})
+
+
+@app.get("/api/voice/status")
+async def api_voice_status() -> JSONResponse:
+    return JSONResponse({"stt": voice.stt_available(), "tts": voice.tts_available()})
+
+
+@app.post("/api/voice/command")
+async def api_voice_command(file: UploadFile) -> JSONResponse:
+    """Browser-Audio → Text → passenden Task auslösen."""
+    audio = await file.read()
+    suffix = os.path.splitext(file.filename or "")[1] or ".webm"
+    try:
+        text = await asyncio.to_thread(voice.transcribe, audio, suffix)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"STT fehlgeschlagen: {exc}"}, status_code=500)
+
+    task_id = voice.match_task(text)
+    if task_id:
+        asyncio.create_task(run_task(task_id, provider, bus))
+    return JSONResponse({"ok": True, "text": text, "task": task_id})
+
+
+@app.get("/api/voice/tts")
+async def api_voice_tts(text: str) -> Response:
+    try:
+        wav = await asyncio.to_thread(voice.synthesize, text)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    if wav is None:
+        return JSONResponse({"ok": False, "error": "TTS nicht verfügbar"}, status_code=503)
+    return Response(content=wav, media_type="audio/wav")
 
 
 @app.websocket("/ws")

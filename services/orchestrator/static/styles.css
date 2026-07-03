@@ -94,9 +94,14 @@ body {
 .audio-head { font-size: 11px; color: var(--muted); letter-spacing: .18em; }
 .audio-head #audio-state { color: var(--gold); }
 .audio-bars { height: 26px; margin: 10px 0; background:
-  repeating-linear-gradient(90deg, var(--line) 0 2px, transparent 2px 7px); opacity: .5; }
+  repeating-linear-gradient(90deg, var(--gold) 0 2px, transparent 2px 7px); opacity: .5;
+  transform-origin: center; transition: transform .08s linear, opacity .08s linear; }
+.voice-text { font-size: 11px; color: var(--gold); min-height: 15px; margin-bottom: 8px;
+  letter-spacing: .04em; line-height: 1.4; }
 .audio-note { font-size: 10px; color: var(--muted); }
 .audio-note em { color: var(--muted); opacity: .7; }
+body[data-state="working"] .audio-bars { background:
+  repeating-linear-gradient(90deg, var(--magenta) 0 2px, transparent 2px 7px); }
 
 /* Zustandsfarben der Statuszeile */
 body[data-state="idle"]    .statusline b { color: var(--gold); }

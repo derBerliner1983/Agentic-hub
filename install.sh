@@ -179,6 +179,7 @@ source "$CONFIG"
 # ---------------------------------------------------------------------------
 say "App-Dienste"
 if [[ -f "$COMPOSE" ]] && have docker; then
+  info "Baue Image (inkl. Voice: faster-whisper + Piper – erster Build lädt Modelle, dauert etwas)…"
   ( cd "$REPO_DIR" && HTTP_PORT="$HTTP_PORT" BIND_ADDR="$BIND_ADDR" dockercmd compose up -d --build ) \
     && ok "Container gebaut & gestartet" || warn "Container-Start fehlgeschlagen."
 else
