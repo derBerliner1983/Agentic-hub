@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>V.A.U.L.T.</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Kopfzeile -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-title">V.A.U.L.T.</div>
+        <div class="brand-sub">Voice-Activated Unified Logic Terminal</div>
+      </div>
+      <div class="statusline" id="statusline">
+        <span data-k="core">● CORE · <b>OFFLINE</b></span>
+        <span data-k="link">LINK · <b>OFFLINE</b></span>
+        <span data-k="runner">RUNNER · <b>IDLE</b></span>
+      </div>
+      <div class="clock" id="clock">--:--</div>
+    </header>
+
+    <!-- Mitte: das Gehirn -->
+    <main class="stage">
+      <canvas id="brain"></canvas>
+      <div class="hint" id="hint">Kein Provider verbunden — Gehirn im Ruhezustand.
+        <br />Starte Ollama und lade ein Modell (<code>ollama pull llama3.1</code>).</div>
+      <div class="taskcard" id="taskcard" hidden>
+        <div class="taskcard-title" id="taskcard-title">—</div>
+        <div class="taskcard-state" id="taskcard-state">—</div>
+      </div>
+    </main>
+
+    <!-- Rechts: Command Deck -->
+    <aside class="deck">
+      <div class="deck-head">COMMAND DECK <span id="deck-meta">· offline</span></div>
+      <div class="deck-grid" id="deck"></div>
+      <div class="deck-note">Intents → Runner führt aus · Ergebnis landet im Vault</div>
+
+      <div class="audio">
+        <div class="audio-head">AUDIO I/O <span id="audio-state">TTS.STANDBY</span></div>
+        <div class="audio-bars" id="audio-bars"></div>
+        <div class="audio-note">VOICE LINK · Space halten zum Sprechen · ESC stopp <em>(bald)</em></div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="/brain.js"></script>
+  <script src="/hud.js"></script>
+</body>
+</html>

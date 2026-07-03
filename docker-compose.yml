@@ -1,0 +1,18 @@
+# V.A.U.L.T. Agentic OS – App-Stack (Phase 1)
+# Startet den Orchestrator (FastAPI + HUD). Ollama läuft auf dem Host (ROCm).
+services:
+  orchestrator:
+    build: ./services/orchestrator
+    container_name: vault-orchestrator
+    ports:
+      - "${HTTP_PORT:-3000}:3000"
+    environment:
+      # Ollama läuft auf dem Host; aus dem Container via host-gateway erreichbar.
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - VAULT_DIR=/vault
+    volumes:
+      - ./vault:/vault
+      - ./.claude/skills:/skills:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

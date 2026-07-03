@@ -9,3 +9,11 @@ automations/*.log
 
 # OS / Editor
 .DS_Store
+
+# Python / Node Build-Artefakte
+__pycache__/
+*.pyc
+node_modules/
+
+# Vault-Task-Ausgaben (Runner-Logs)
+vault/runs/
