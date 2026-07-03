@@ -187,7 +187,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6) Kiosk (nur MODE=both|kiosk)
+# 6) Obsidian (Memory) – Vault initialisieren, GUI nur bei Kiosk/Monitor
+# ---------------------------------------------------------------------------
+say "Obsidian (Memory)"
+bash "$REPO_DIR/scripts/setup-obsidian.sh" "$MODE" "$REPO_DIR/vault" || warn "Obsidian-Setup übersprungen."
+
+# ---------------------------------------------------------------------------
+# 7) Kiosk (nur MODE=both|kiosk)
 # ---------------------------------------------------------------------------
 if [[ "$MODE" == "both" || "$MODE" == "kiosk" ]]; then
   say "Kiosk"

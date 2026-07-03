@@ -1,25 +1,30 @@
-# Agentic Hub – Projekt-Kontext für Claude Code
+# V.A.U.L.T. – Agentic OS · Projekt-Kontext für Claude Code
 
-Dies ist ein **Agentic OS** nach dem Chase-AI-Muster (4 Schichten: Memory, Skills, Automations,
-Dashboard). Diese Datei wird bei jedem Prompt in diesem Repo mitgeschickt.
+Dies ist **V.A.U.L.T.**, ein Agentic OS auf Basis von Ubuntu: ein FastAPI-Orchestrator
+mit HUD („Gehirn"-Visualisierung), lokalem Modell (Ollama/ROCm) und einem
+Obsidian-Vault als Memory-Layer. Diese Datei wird bei jedem Prompt mitgeschickt.
 
 ## Struktur
 
+- `services/orchestrator/` – Backend (FastAPI) + HUD (`static/`). Provider-Adapter,
+  WebSocket, Task-Runner. Siehe `services/orchestrator/app/`.
+- `docker-compose.yml` – startet den Orchestrator; Ollama läuft auf dem Host.
+- `install.sh` / `update.sh` – One-Click-Installer und git-basiertes Update.
+- `scripts/` – Host-nahe Einrichtung (Kiosk, Obsidian).
 - `vault/` – Memory-Layer (Obsidian-kompatibel, reines Markdown). Siehe `vault/CLAUDE.md`.
-- `.claude/skills/` – wiederverwendbare Skills (je ein Ordner mit `SKILL.md`).
-- `automations/` – zeitgesteuerte Ausführung von Skills (cron-Skripte).
-- `dashboard/` – klickbares Web-Dashboard + Observability.
-- `ANLEITUNG.md` – Schritt-für-Schritt-Aufbauanleitung (Deutsch).
+- `.claude/skills/` – Skill-Bibliothek (Prompt-Bausteine, wird an Tasks angebunden).
+- `docs/OS-PLAN.md` – Architektur- und Bauplan (Deutsch).
+- `instance/` – lokale Instanz-Konfiguration (gitignored, überlebt Updates).
 
 ## Arbeitskonventionen
 
-- Neue Rohnotizen kommen nach `vault/raw/` mit Dateinamen im Format `YYYY-MM-DD-thema.md`.
-- Aufbereitete Referenz-Artikel kommen nach `vault/wiki/`.
-- Fertige Deliverables kommen nach `vault/output/`.
+- Neue Rohnotizen nach `vault/raw/` als `YYYY-MM-DD-thema.md`.
+- Aufbereitete Referenz-Artikel nach `vault/wiki/`.
+- Fertige Deliverables nach `vault/output/`; Task-Runner-Ergebnisse nach `vault/runs/`.
 - Interne Verlinkung im Obsidian-Stil: `[[dateiname]]`.
 - Antworten und Notizen standardmäßig auf Deutsch.
 
-## Wenn ich einen Skill anlege
+## Neue Tasks / Skills
 
-Format: `.claude/skills/<name>/SKILL.md` mit YAML-Frontmatter (`name`, `description`) und einer
-klaren Schritt-für-Schritt-Anweisung. Nutze dafür den `skill-creator` Skill.
+Tasks sind in `services/orchestrator/app/tasks.py` registriert (id, Titel, Domäne,
+Prompt). Wiederverwendbare Prompt-Bausteine liegen als Skills in `.claude/skills/`.

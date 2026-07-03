@@ -17,3 +17,7 @@ node_modules/
 
 # Vault-Task-Ausgaben (Runner-Logs)
 vault/runs/
+
+# Obsidian: nur veränderlichen Workspace-State ignorieren, Config behalten
+vault/.obsidian/workspace*.json
+vault/.obsidian/cache
