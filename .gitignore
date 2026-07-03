@@ -21,3 +21,8 @@ vault/runs/
 # Obsidian: nur veränderlichen Workspace-State ignorieren, Config behalten
 vault/.obsidian/workspace*.json
 vault/.obsidian/cache
+
+# Instanz-Stores (Tasks/Settings/Agents – lokal, mit API-Keys)
+instance/tasks.json
+instance/settings.json
+instance/agents.json

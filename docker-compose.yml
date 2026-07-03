@@ -1,18 +1,41 @@
-# V.A.U.L.T. Agentic OS – App-Stack (Phase 1)
-# Startet den Orchestrator (FastAPI + HUD). Ollama läuft auf dem Host (ROCm).
+# V.A.U.L.T. Agentic OS – App-Stack
+# orchestrator = FastAPI + HUD · caddy = HTTPS-Reverse-Proxy (für Browser-Mikro/Voice)
 services:
   orchestrator:
     build: ./services/orchestrator
     container_name: vault-orchestrator
-    ports:
-      - "${HTTP_PORT:-3000}:3000"
     environment:
-      # Ollama läuft auf dem Host; aus dem Container via host-gateway erreichbar.
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
       - VAULT_DIR=/vault
+      - SKILLS_DIR=/skills
+      - STORE_DIR=/instance
+      - REPO_DIR=/repo
     volumes:
       - ./vault:/vault
-      - ./.claude/skills:/skills:ro
+      - ./.claude/skills:/skills          # rw: Skills im HUD baubar
+      - ./instance:/instance              # persistente Config (Tasks/Settings/Agents)
+      - ./:/repo                          # für den UPDATE-Button (git pull + rebuild)
+      - /var/run/docker.sock:/var/run/docker.sock   # Update kann Container neu bauen
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    expose:
+      - "3000"
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: vault-caddy
+    depends_on:
+      - orchestrator
+    ports:
+      - "${HTTP_PORT:-3000}:80"     # HTTP  (HUD)
+      - "${HTTPS_PORT:-3443}:443"   # HTTPS (nötig fürs Browser-Mikro / Voice)
+    volumes:
+      - ./services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

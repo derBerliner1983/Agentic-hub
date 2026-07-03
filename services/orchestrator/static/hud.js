@@ -97,6 +97,35 @@
     applyState();
   }
 
+  function handleProject(msg) {
+    taskcard.hidden = false;
+    taskTitle.textContent = "PROJEKT · " + (msg.goal || "");
+    const map = {
+      queued: "eingereiht", planning: "plant …", planned: `Plan: ${(msg.steps || []).length} Schritte`,
+      step: `Schritt ${msg.index}/${msg.total} · ${msg.role}`, hire: `stellt ${msg.role} ein (${msg.model})`,
+      fixing: `bessert nach (Runde ${msg.round})`, writing: "schreibt …",
+      done: `fertig ✓ (${msg.steps_done} Schritte)`, error: "Fehler: " + (msg.error || ""),
+    };
+    taskState.textContent = map[msg.state] || msg.state;
+    if (msg.role) brain.setActiveDomain(msg.role === "coder" ? "research" : "ops");
+    if (["queued", "planning", "planned", "step", "hire", "fixing", "writing"].includes(msg.state)) {
+      activeTasks = Math.max(activeTasks, 1);
+    }
+    if (msg.state === "done" || msg.state === "error") {
+      activeTasks = 0; brain.setActiveDomain(null); loadVitals();
+      setTimeout(() => { if (activeTasks === 0) taskcard.hidden = true; }, 5000);
+    }
+    applyState();
+  }
+
+  function handleModel(msg) {
+    if (msg.state === "pulling") {
+      taskcard.hidden = false;
+      taskTitle.textContent = "MODELL LADEN";
+      taskState.textContent = `lädt ${msg.model} …`;
+    }
+  }
+
   // ---- linke Spalte: Vitals ----------------------------------------------
   async function loadVitals() {
     try {
@@ -131,6 +160,8 @@
       const msg = JSON.parse(e.data);
       if (msg.type === "status") handleStatus(msg);
       else if (msg.type === "task") handleTask(msg);
+      else if (msg.type === "project") handleProject(msg);
+      else if (msg.type === "model") handleModel(msg);
     };
     ws.onclose = () => {
       connected = false; applyState(); setDeckEnabled();

@@ -29,13 +29,26 @@ git clone <repo-url> && cd Agentic-hub
 ollama pull llama3.1  # ein Modell laden → das „Gehirn" erwacht
 ```
 
-HUD öffnen: **`http://<server-ip>:3000`**
+HUD öffnen: **`http://<server-ip>:3000`** · mit Mikro/Voice: **`https://<server-ip>:3443`**
+(HTTPS via Caddy, beim ersten Aufruf Zertifikatswarnung einmal akzeptieren).
 
 Aktualisieren (zieht neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
 
 ```bash
-./update.sh
+./update.sh          # oder im HUD: ↻-Button oben rechts
 ```
+
+## Was du im HUD tun kannst
+
+- **Command Deck** (rechts): Tasks per Klick starten.
+- **＋ Builder**: eigene **Tasks aus Skills zusammensetzen** und neue **Skills** anlegen —
+  so bringst du dein Wissen in wiederverwendbare Aufgaben.
+- **⚙ Settings**: Provider umschalten (Ollama lokal · Claude · OpenAI), Keys bleiben lokal.
+- **↻ Update**: aus Git aktualisieren.
+- **Voice**: Space halten zum Sprechen → Befehl löst passenden Task aus (braucht HTTPS/localhost).
+- **Projekt-Launcher** (unter dem Gehirn): Ziel eingeben → der Agent **plant**, **stellt
+  spezialisierte Rollen-Agenten ein** (planner/coder/…), **lädt automatisch das passende
+  Ollama-Modell**, ein **Verifier prüft** und lässt nachbessern. Ergebnis → `vault/projects/`.
 
 ## Zustände des „Gehirns"
 
@@ -56,9 +69,11 @@ Agentic-hub/
 ├── docker-compose.yml            # startet den Orchestrator
 ├── install.sh · update.sh        # One-Click-Install + git-Update
 ├── scripts/                      # setup-kiosk.sh · setup-obsidian.sh
-├── services/orchestrator/        # 🤖 Backend + 📊 HUD
-│   ├── app/  (main, providers/, tasks, events)
-│   └── static/  (index.html, brain.js, hud.js, styles.css)
+├── services/
+│   ├── orchestrator/             # 🤖 Backend + 📊 HUD
+│   │   ├── app/  (main, providers/, tasks, skills, settings, agents, projects, voice, vitals)
+│   │   └── static/  (index.html, brain.js, hud.js, ui.js, voice.js, styles.css)
+│   └── caddy/                    # 🔒 HTTPS-Reverse-Proxy
 ├── vault/                        # 🧠 Memory (Obsidian)
 │   └── raw/ wiki/ output/ projects/ ops/ runs/
 ├── .claude/skills/               # ⚡ Skill-Bibliothek

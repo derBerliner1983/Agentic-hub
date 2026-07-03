@@ -73,10 +73,53 @@ body {
 .taskcard-title { font-size: 13px; letter-spacing: .18em; }
 .taskcard-state { font-size: 11px; color: var(--gold); margin-top: 4px; }
 
+/* Projekt-Launcher */
+.project-bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: flex; gap: 8px; width: min(620px, 82%); }
+.project-bar input { flex: 1; background: rgba(10,12,18,.8); border: 1px solid var(--line);
+  color: var(--fg); font-family: var(--mono); font-size: 12px; padding: 10px 12px; letter-spacing: .04em; }
+.project-bar input:focus { outline: none; border-color: var(--gold); }
+.project-bar button { background: transparent; border: 1px solid var(--gold); color: var(--gold);
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; padding: 0 14px; cursor: pointer; }
+.project-bar button:hover { background: rgba(216,180,90,.1); }
+.project-bar button:disabled { opacity: .4; cursor: wait; }
+
 /* Command Deck */
 .deck { border-left: 1px solid var(--line); padding: 22px 20px; display: flex; flex-direction: column; }
-.deck-head { font-size: 11px; color: var(--muted); letter-spacing: .18em; margin-bottom: 16px; }
+.deck-head { font-size: 11px; color: var(--muted); letter-spacing: .18em; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px; }
 .deck-head #deck-meta { color: var(--gold); }
+.deck-actions { margin-left: auto; display: flex; gap: 4px; }
+.mini-btn { background: transparent; border: 1px solid var(--line); color: var(--muted);
+  width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 13px; line-height: 1; }
+.mini-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+/* Modal */
+.modal-root { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
+.modal { width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; background: var(--surface, #12141b);
+  background: #10131b; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.modal-head { display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px; border-bottom: 1px solid var(--line); font-size: 13px; letter-spacing: .16em; color: var(--gold); }
+.modal-body { padding: 18px; }
+.modal-body h4 { margin: 0 0 12px; color: var(--fg); font-size: 12px; letter-spacing: .1em; }
+.modal-body label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; letter-spacing: .06em; }
+.modal-body input, .modal-body select, .modal-body textarea {
+  width: 100%; background: #0a0c12; border: 1px solid var(--line); color: var(--fg);
+  font-family: var(--mono); font-size: 12px; padding: 8px 10px; }
+.modal-body input:focus, .modal-body textarea:focus, .modal-body select:focus { outline: none; border-color: var(--gold); }
+.modal-body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.b-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.b-cols .row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.btn { background: transparent; border: 1px solid var(--line); color: var(--fg);
+  font-family: var(--mono); font-size: 11px; padding: 7px 10px; cursor: pointer; letter-spacing: .06em; }
+.btn:hover { border-color: var(--gold); color: var(--gold); }
+.btn.primary { border-color: var(--gold); color: var(--gold); margin-top: 14px; }
+.steps { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.step-chip { font-size: 11px; background: #0a0c12; border: 1px solid var(--line); padding: 5px 8px;
+  display: flex; justify-content: space-between; align-items: center; }
+.step-chip .x { background: none; border: 0; color: var(--muted); cursor: pointer; }
+.hint2 { font-size: 10px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+@media (max-width: 700px) { .b-cols { grid-template-columns: 1fr; } }
 .deck-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .deck-btn {
   appearance: none; text-align: left; cursor: pointer; color: var(--fg);

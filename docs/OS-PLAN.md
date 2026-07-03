@@ -196,10 +196,22 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 - „Boot-up"-Animation bei erster Verbindung
 - Linke Spalte (System Vitals · Directives · Documents) aus echten Vault-Daten (`/api/vitals`)
 
-**Phase 4 – Appliance / „OS-Gefühl"**
+**Phase 4 – Provider-Panel · Builder · HTTPS · Update**  ✅
+- Provider-Settings-Panel im HUD: Ollama/Claude/OpenAI umschaltbar (Keys lokal in instance/)
+- Task/Skill-Builder im HUD: Tasks aus Skills zusammensetzen, neue Skills anlegen
+- Caddy-Reverse-Proxy mit HTTPS (Browser-Mikro/Voice über LAN)
+- UPDATE-Button → zieht Git-Stand + baut Container neu
+
+**Phase 6 – Agent-Mesh & Projekte**  ✅ (Fundament)
+- Rollen-Agenten (planner/researcher/coder/writer/verifier) mit je eigenem Ollama-Modell
+- Projekt-Launcher: Ziel → Planner zerlegt → passende Agenten werden „eingestellt" →
+  Modell wird **automatisch geladen** (ensure_model) → Verifier prüft → Nachbessern-Schleife
+- Ergebnisse nach `vault/projects/`. Iteratives Ziel: robuste, autonome Ausführung.
+
+**Phase 7 – Appliance / „OS-Gefühl" (optional)**
 - Auto-Login + Chromium-Kiosk → Vollbild-HUD beim Boot
 - Plymouth-Boot-Splash (V.A.U.L.T.-Branding)
-- systemd-Units für orchestrator, runner, ollama
+- systemd-Units
 
 **Phase 5 – Voice**  ✅
 - Lokales STT (faster-whisper) + TTS (Piper, deutsche Stimme), „Hold Space to talk",

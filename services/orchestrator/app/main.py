@@ -1,47 +1,40 @@
-"""V.A.U.L.T. Orchestrator – FastAPI-App.
-
-Stellt bereit:
-  • GET  /api/status         → Provider-/Verbindungsstatus + Task-Liste
-  • POST /api/tasks/{id}/run → Task starten (Events kommen über den WebSocket)
-  • WS   /ws                 → Live-Status + Task-Events (steuert das „Gehirn")
-  • /                        → statisches HUD
-"""
+"""V.A.U.L.T. Orchestrator – FastAPI-App."""
 from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import subprocess
 
-from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .events import EventBus
-from .providers.ollama import OllamaProvider
-from .tasks import run_task, task_list
+from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
-from . import voice
-
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434")
+from . import voice, settings as settings_mod, skills as skills_mod, agents as agents_mod
+from .projects import run_project
 
 app = FastAPI(title="V.A.U.L.T. Orchestrator")
 bus = EventBus()
-provider = OllamaProvider(OLLAMA_HOST)
+
+REPO_DIR = os.environ.get("REPO_DIR", "/repo")
 
 _last_status: dict = {"type": "status", "connected": False, "providers": [], "tasks": task_list()}
 
 
+def provider():
+    return settings_mod.build_provider()
+
+
 async def _status_snapshot() -> dict:
-    health = await provider.health()
-    return {
-        "type": "status",
-        "connected": health["connected"],
-        "providers": [health],
-        "tasks": task_list(),
-    }
+    p = provider()
+    health = await p.health()
+    return {"type": "status", "active_provider": p.name, "connected": health["connected"],
+            "providers": [health], "tasks": task_list()}
 
 
 async def _status_poller() -> None:
-    """Pollt regelmäßig den Provider-Status und published Änderungen."""
     global _last_status
     while True:
         try:
@@ -66,6 +59,7 @@ async def _shutdown() -> None:
         await app.state.poller
 
 
+# ---- Status / Vitals -------------------------------------------------------
 @app.get("/api/status")
 async def api_status() -> JSONResponse:
     return JSONResponse(await _status_snapshot())
@@ -73,17 +67,98 @@ async def api_status() -> JSONResponse:
 
 @app.get("/api/vitals")
 async def api_vitals() -> JSONResponse:
-    health = await provider.health()
+    health = await provider().health()
     model = health["models"][0] if health["models"] else None
     return JSONResponse(build_vitals(model))
 
 
+# ---- Tasks -----------------------------------------------------------------
+@app.get("/api/tasks")
+async def api_tasks() -> JSONResponse:
+    return JSONResponse(task_list())
+
+
+@app.get("/api/tasks/{task_id}")
+async def api_task_get(task_id: str) -> JSONResponse:
+    t = get_task(task_id)
+    return JSONResponse(t or {"error": "not found"}, status_code=200 if t else 404)
+
+
+@app.post("/api/tasks")
+async def api_task_save(task: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(save_task(task))
+
+
+@app.delete("/api/tasks/{task_id}")
+async def api_task_delete(task_id: str) -> JSONResponse:
+    return JSONResponse({"ok": delete_task(task_id)})
+
+
 @app.post("/api/tasks/{task_id}/run")
 async def api_run_task(task_id: str) -> JSONResponse:
-    asyncio.create_task(run_task(task_id, provider, bus))
+    asyncio.create_task(run_task(task_id, provider(), bus))
     return JSONResponse({"ok": True, "task": task_id})
 
 
+# ---- Skills ----------------------------------------------------------------
+@app.get("/api/skills")
+async def api_skills() -> JSONResponse:
+    return JSONResponse(skills_mod.list_skills())
+
+
+@app.post("/api/skills")
+async def api_skill_create(data: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(skills_mod.create_skill(
+        data.get("name", "Skill"), data.get("description", ""), data.get("body", "")))
+
+
+# ---- Settings (Phase 4) ----------------------------------------------------
+@app.get("/api/settings")
+async def api_settings() -> JSONResponse:
+    return JSONResponse(settings_mod.public())
+
+
+@app.post("/api/settings")
+async def api_settings_save(patch: dict = Body(...)) -> JSONResponse:
+    settings_mod.update(patch)
+    return JSONResponse(settings_mod.public())
+
+
+# ---- Agents / Projekte (Agent-Mesh) ---------------------------------------
+@app.get("/api/agents")
+async def api_agents() -> JSONResponse:
+    return JSONResponse(agents_mod.list_agents())
+
+
+@app.post("/api/agents")
+async def api_agent_save(agent: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(agents_mod.save_agent(agent))
+
+
+@app.post("/api/projects/run")
+async def api_project_run(data: dict = Body(...)) -> JSONResponse:
+    goal = (data.get("goal") or "").strip()
+    if not goal:
+        return JSONResponse({"ok": False, "error": "kein Ziel"}, status_code=400)
+    asyncio.create_task(run_project(goal, settings_mod.ollama_provider(), bus))
+    return JSONResponse({"ok": True})
+
+
+# ---- System-Update (UPDATE-Button) ----------------------------------------
+@app.post("/api/system/update")
+async def api_system_update() -> JSONResponse:
+    script = os.path.join(REPO_DIR, "update.sh")
+    if not os.path.isfile(script):
+        return JSONResponse({"ok": False, "error": f"update.sh nicht gefunden ({script}). "
+                             "Repo muss als /repo gemountet sein."}, status_code=503)
+    try:
+        subprocess.Popen(["bash", script], cwd=REPO_DIR)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    return JSONResponse({"ok": True, "note": "Update gestartet – Container startet gleich neu."})
+
+
+# ---- Voice -----------------------------------------------------------------
 @app.get("/api/voice/status")
 async def api_voice_status() -> JSONResponse:
     return JSONResponse({"stt": voice.stt_available(), "tts": voice.tts_available()})
@@ -91,17 +166,15 @@ async def api_voice_status() -> JSONResponse:
 
 @app.post("/api/voice/command")
 async def api_voice_command(file: UploadFile) -> JSONResponse:
-    """Browser-Audio → Text → passenden Task auslösen."""
     audio = await file.read()
     suffix = os.path.splitext(file.filename or "")[1] or ".webm"
     try:
         text = await asyncio.to_thread(voice.transcribe, audio, suffix)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": f"STT fehlgeschlagen: {exc}"}, status_code=500)
-
     task_id = voice.match_task(text)
     if task_id:
-        asyncio.create_task(run_task(task_id, provider, bus))
+        asyncio.create_task(run_task(task_id, provider(), bus))
     return JSONResponse({"ok": True, "text": text, "task": task_id})
 
 
@@ -116,11 +189,11 @@ async def api_voice_tts(text: str) -> Response:
     return Response(content=wav, media_type="audio/wav")
 
 
+# ---- WebSocket -------------------------------------------------------------
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     queue = bus.subscribe()
-    # Sofort aktuellen Status schicken, damit das HUD nicht auf den Poller warten muss.
     await ws.send_json(await _status_snapshot())
     try:
         while True:
@@ -132,5 +205,5 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         bus.unsubscribe(queue)
 
 
-# Statisches HUD unter "/" (muss NACH den API-Routen gemountet werden).
+# Statisches HUD unter "/" (nach den API-Routen).
 app.mount("/", StaticFiles(directory="static", html=True), name="hud")

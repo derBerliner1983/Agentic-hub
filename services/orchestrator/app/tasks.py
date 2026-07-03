@@ -1,8 +1,12 @@
-"""Task-Registry + Runner.
+"""Task-Registry + Runner (datengetrieben).
 
-Ein Task ist ein benannter Job aus dem Command Deck. Er ruft den aktiven
-Provider auf, streamt Lebenszyklus-Events (queued → thinking → writing → done)
-und schreibt das Ergebnis in den Vault (Memory-Layer).
+Ein Task ist ein benannter Job aus dem Command Deck. Er besteht aus SCHRITTEN,
+die entweder einen vorhandenen Skill nutzen (`{"type":"skill","skill":"id"}`)
+oder einen freien Prompt (`{"type":"prompt","prompt":"..."}`). Der Runner führt
+die Schritte nacheinander aus (Ergebnis eines Schritts = Kontext für den nächsten),
+streamt Events (queued → thinking → writing → done) und schreibt nach vault/runs/.
+
+Tasks werden in STORE (instance/tasks.json) gespeichert und sind im HUD baubar.
 """
 from __future__ import annotations
 import os
@@ -11,45 +15,93 @@ from pathlib import Path
 
 from .providers.base import Provider
 from .events import EventBus
+from . import store, skills
 
 VAULT_DIR = Path(os.environ.get("VAULT_DIR", "/vault"))
 
-# id -> (Anzeigename, Hirn-Domäne, Prompt-Vorlage)
-TASKS: dict[str, dict] = {
-    "metrics-pull": {"title": "Metrics Pull", "domain": "ops",
-                     "prompt": "Fasse die wichtigsten Kennzahlen des Tages stichpunktartig zusammen."},
-    "am-report":    {"title": "AM Report", "domain": "ops",
-                     "prompt": "Erstelle einen kurzen Morgen-Report mit Fokus und Prioritäten für heute."},
-    "inbox-brief":  {"title": "Inbox Brief", "domain": "inbox",
-                     "prompt": "Erstelle ein kurzes Inbox-Briefing: was ist dringend, was kann warten."},
-    "gh-trending":  {"title": "GH Trending", "domain": "research",
-                     "prompt": "Nenne 5 interessante Themen/Trends aus der Entwickler-Welt mit je einem Satz."},
-    "trend-scan":   {"title": "Trend Scan", "domain": "research",
-                     "prompt": "Führe einen kurzen Trend-Scan zu KI-Agenten durch (3-5 Punkte)."},
-    "yt-week":      {"title": "YT Week", "domain": "content",
-                     "prompt": "Schlage 3 YouTube-Video-Ideen für diese Woche vor, je mit Hook."},
-    "plan-today":   {"title": "Plan Today", "domain": "ops",
-                     "prompt": "Erstelle einen fokussierten Tagesplan mit 3 wichtigsten Aufgaben."},
-    "plan-tmrw":    {"title": "Plan Tmrw", "domain": "ops",
-                     "prompt": "Skizziere einen Plan für morgen mit den 3 wichtigsten Zielen."},
-    "wk-review":    {"title": "Wk Review", "domain": "ops",
-                     "prompt": "Erstelle ein kurzes Wochen-Review: Erfolge, Learnings, nächste Schritte."},
-    "vault-clean":  {"title": "Vault Clean", "domain": "ops",
-                     "prompt": "Schlage vor, wie der Vault aufgeräumt/strukturiert werden könnte."},
-}
+# Standard-Tasks (Seed beim ersten Start, falls noch nichts gespeichert ist)
+_DEFAULTS: list[dict] = [
+    {"id": "metrics-pull", "title": "Metrics Pull", "domain": "ops", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Fasse die wichtigsten Kennzahlen des Tages stichpunktartig zusammen."}]},
+    {"id": "am-report", "title": "AM Report", "domain": "ops", "cadence": "scheduled",
+     "steps": [{"type": "prompt", "prompt": "Erstelle einen kurzen Morgen-Report mit Fokus und Prioritäten für heute."}]},
+    {"id": "inbox-brief", "title": "Inbox Brief", "domain": "inbox", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Erstelle ein kurzes Inbox-Briefing: was ist dringend, was kann warten."}]},
+    {"id": "gh-trending", "title": "GH Trending", "domain": "research", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Nenne 5 interessante Themen/Trends aus der Entwickler-Welt mit je einem Satz."}]},
+    {"id": "trend-scan", "title": "Trend Scan", "domain": "research", "cadence": "scheduled",
+     "steps": [{"type": "prompt", "prompt": "Führe einen kurzen Trend-Scan zu KI-Agenten durch (3-5 Punkte)."}]},
+    {"id": "yt-week", "title": "YT Week", "domain": "content", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Schlage 3 YouTube-Video-Ideen für diese Woche vor, je mit Hook."}]},
+    {"id": "plan-today", "title": "Plan Today", "domain": "ops", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Erstelle einen fokussierten Tagesplan mit 3 wichtigsten Aufgaben."}]},
+    {"id": "plan-tmrw", "title": "Plan Tmrw", "domain": "ops", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Skizziere einen Plan für morgen mit den 3 wichtigsten Zielen."}]},
+    {"id": "wk-review", "title": "Wk Review", "domain": "ops", "cadence": "scheduled",
+     "steps": [{"type": "prompt", "prompt": "Erstelle ein kurzes Wochen-Review: Erfolge, Learnings, nächste Schritte."}]},
+    {"id": "vault-clean", "title": "Vault Clean", "domain": "ops", "cadence": "on-demand",
+     "steps": [{"type": "prompt", "prompt": "Schlage vor, wie der Vault aufgeräumt/strukturiert werden könnte."}]},
+]
+
+DOMAINS = ["inbox", "research", "content", "ops"]
+
+
+def _tasks() -> list[dict]:
+    data = store.load("tasks.json", None)
+    if not data:
+        store.save("tasks.json", _DEFAULTS)
+        return _DEFAULTS
+    return data
 
 
 def task_list() -> list[dict]:
-    return [{"id": tid, "title": t["title"], "domain": t["domain"]} for tid, t in TASKS.items()]
+    return [{"id": t["id"], "title": t["title"], "domain": t.get("domain", "ops"),
+             "cadence": t.get("cadence", "on-demand")} for t in _tasks()]
+
+
+def get_task(task_id: str) -> dict | None:
+    return next((t for t in _tasks() if t["id"] == task_id), None)
+
+
+def save_task(task: dict) -> dict:
+    tasks = _tasks()
+    task.setdefault("domain", "ops")
+    task.setdefault("cadence", "on-demand")
+    task.setdefault("steps", [])
+    if not task.get("id"):
+        task["id"] = skills.slugify(task.get("title", "task"))
+    idx = next((i for i, t in enumerate(tasks) if t["id"] == task["id"]), None)
+    if idx is None:
+        tasks.append(task)
+    else:
+        tasks[idx] = task
+    store.save("tasks.json", tasks)
+    return task
+
+
+def delete_task(task_id: str) -> bool:
+    tasks = _tasks()
+    new = [t for t in tasks if t["id"] != task_id]
+    if len(new) == len(tasks):
+        return False
+    store.save("tasks.json", new)
+    return True
+
+
+def _resolve_step_prompt(step: dict) -> str:
+    if step.get("type") == "skill":
+        body = skills.skill_prompt(step.get("skill", ""))
+        return body or f"[Skill '{step.get('skill')}' nicht gefunden]"
+    return step.get("prompt", "")
 
 
 async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
-    task = TASKS.get(task_id)
+    task = get_task(task_id)
     if not task:
         await bus.publish({"type": "task", "id": task_id, "state": "error", "error": "unbekannter Task"})
         return
 
-    domain = task["domain"]
+    domain = task.get("domain", "ops")
 
     async def emit(state: str, **extra):
         await bus.publish({"type": "task", "id": task_id, "title": task["title"],
@@ -62,8 +114,19 @@ async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
         return
 
     await emit("thinking")
+    steps = task.get("steps") or [{"type": "prompt", "prompt": task.get("title", "")}]
+    context = ""
+    outputs: list[str] = []
     try:
-        output = await provider.generate(task["prompt"])
+        for i, step in enumerate(steps):
+            prompt = _resolve_step_prompt(step)
+            if context:
+                prompt = f"{prompt}\n\n--- Kontext aus vorherigem Schritt ---\n{context}"
+            result = await provider.generate(prompt)
+            outputs.append(result)
+            context = result
+            if len(steps) > 1:
+                await emit("thinking", step=i + 1, steps=len(steps))
     except Exception as exc:  # noqa: BLE001
         await emit("error", error=str(exc))
         return
@@ -73,11 +136,12 @@ async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
     runs_dir = VAULT_DIR / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     out_path = runs_dir / f"{stamp}-{task_id}.md"
+    body = "\n\n---\n\n".join(outputs)
     try:
         out_path.write_text(
             f"# {task['title']}\n\n"
-            f"- Task: `{task_id}`  ·  Domäne: {domain}  ·  {dt.datetime.now().isoformat(timespec='seconds')}\n\n"
-            f"{output}\n",
+            f"- Task: `{task_id}` · Domäne: {domain} · Schritte: {len(steps)} · "
+            f"{dt.datetime.now().isoformat(timespec='seconds')}\n\n{body}\n",
             encoding="utf-8",
         )
         rel = str(out_path).replace(str(VAULT_DIR), "vault")
@@ -85,4 +149,4 @@ async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
         await emit("error", error=f"Schreiben fehlgeschlagen: {exc}")
         return
 
-    await emit("done", output_path=rel, preview=output[:280])
+    await emit("done", output_path=rel, preview=body[:280])
