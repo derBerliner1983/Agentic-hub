@@ -1,0 +1,8 @@
+# Logs der Automationen
+automations/*.log
+
+# lokale Claude-Einstellungen
+.claude/settings.local.json
+
+# OS / Editor
+.DS_Store
