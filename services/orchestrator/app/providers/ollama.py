@@ -79,6 +79,15 @@ class OllamaProvider(Provider):
                 await bus.publish({"type": "model", "state": "error", "model": model, "error": str(exc)})
             return False
 
+    async def delete_model(self, name: str) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.request("DELETE", f"{self.base_url}/api/delete",
+                                            json={"name": name})
+                return resp.status_code == 200
+        except Exception:  # noqa: BLE001
+            return False
+
     async def generate(self, prompt: str, model: str | None = None,
                        system: str | None = None) -> str:
         if model is None:

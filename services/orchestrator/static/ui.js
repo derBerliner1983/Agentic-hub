@@ -210,12 +210,27 @@
       fetch("/api/agents").then((r) => r.json()).catch(() => []),
     ]);
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
-    const avail = (models.available || []).map((m) => `${esc(m.name)} (${gb(m.size)})`).join(" · ") || "—";
+    const reach = models.reachable;
     const running = (models.running || []).map((m) =>
       `${esc(m.name)} · VRAM ${gb(m.size_vram || 0)}`).join(" · ") || "keine geladen";
+    const availList = (models.available || []).map((m) =>
+      `<div class="mrow"><span>${esc(m.name)} <span style="opacity:.5">(${gb(m.size)})</span></span>
+       <button class="lnk" data-delmodel="${esc(m.name)}">löschen</button></div>`).join("")
+      || '<div class="hint2">noch keine Modelle geladen</div>';
 
-    let html = `<hr/><h4>Ollama-Modelle</h4>
-      <div class="hint2"><b>Verfügbar:</b> ${avail}</div>
+    let html = `<hr/><h4>Ollama-Modelle
+        <span class="exec-badge ${reach ? "on" : ""}" style="margin-left:6px">
+          ${reach ? "ERREICHBAR" : "NICHT ERREICHBAR"}</span></h4>`;
+    if (!reach) {
+      html += `<div class="hint2">Ollama läuft nicht auf dem Host. Auf dem Server:
+        <code>curl -fsSL https://ollama.com/install.sh | sh</code>, dann Dienst auf
+        0.0.0.0 binden (siehe docs/INBETRIEBNAHME.md).</div>`;
+    }
+    html += `<div class="row" style="margin-top:6px">
+        <input id="pull-name" placeholder="llama3.1 · qwen2.5-coder · …" style="flex:1"/>
+        <button class="btn" id="pull-go">⤓ Modell laden</button></div>
+      <div class="hint2" id="pull-msg"></div>
+      <div style="margin-top:8px">${availList}</div>
       <div class="hint2"><b>Geladen (RAM/VRAM):</b> ${running}</div>
       <hr/><h4>Agenten-Modelle</h4>`;
     const modelOpts = '<option value="">—</option>' +
@@ -239,6 +254,23 @@
         <div id="auditlist" class="audit"></div>`;
     }
     bodyEl.insertAdjacentHTML("beforeend", html);
+
+    const pullGo = document.getElementById("pull-go");
+    if (pullGo) pullGo.onclick = async () => {
+      const name = document.getElementById("pull-name").value.trim();
+      if (!name) return;
+      const j = await fetch("/api/models/pull", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }) }).then((r) => r.json()).catch(() => ({}));
+      document.getElementById("pull-msg").textContent = j.ok
+        ? `Lade „${name}" … Fortschritt siehst du im Board-Live-Log. Danach ⚙ neu öffnen.`
+        : ("Fehler: " + (j.error || "?"));
+    };
+    bodyEl.querySelectorAll("[data-delmodel]").forEach((b) => b.onclick = async () => {
+      if (!confirm(`Modell ${b.dataset.delmodel} löschen?`)) return;
+      await fetch("/api/models/delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: b.dataset.delmodel }) });
+      openSettings();
+    };
 
     document.getElementById("ag-save").onclick = async () => {
       for (const inp of bodyEl.querySelectorAll(".ag-model")) {

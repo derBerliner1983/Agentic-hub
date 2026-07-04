@@ -153,6 +153,7 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-size: 11px; col
 
 /* Modal */
 .modal-root { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
+.modal-root[hidden] { display: none; }   /* sonst überschreibt display:grid das hidden-Attribut */
 .modal { width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; background: var(--surface, #12141b);
   background: #10131b; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
 .modal-head { display: flex; justify-content: space-between; align-items: center;
@@ -179,6 +180,8 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-size: 11px; col
 .audit { max-height: 160px; overflow-y: auto; font-size: 10px; color: var(--muted);
   background: #06080d; border: 1px solid var(--line); padding: 8px; line-height: 1.7; }
 .audit b { color: var(--gold); }
+.mrow { display: flex; justify-content: space-between; align-items: center; font-size: 11px;
+  padding: 4px 0; border-bottom: 1px solid rgba(216,180,90,.07); }
 @media (max-width: 700px) { .b-cols { grid-template-columns: 1fr; } }
 .deck-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .deck-btn {

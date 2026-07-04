@@ -141,7 +141,22 @@ if [[ "$WANT_OLLAMA" -eq 1 ]]; then
       warn "curl fehlt – Ollama nicht installiert."
     fi
   fi
-  have ollama && info "Später ein Modell laden, z. B.:  ollama pull llama3.1"
+  # Ollama muss auf 0.0.0.0 lauschen, damit der Container (host.docker.internal) es erreicht
+  if have ollama && have systemctl; then
+    $SUDO mkdir -p /etc/systemd/system/ollama.service.d
+    printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' \
+      | $SUDO tee /etc/systemd/system/ollama.service.d/10-vault.conf >/dev/null
+    $SUDO systemctl daemon-reload 2>/dev/null || true
+    $SUDO systemctl enable --now ollama 2>/dev/null || true
+    $SUDO systemctl restart ollama 2>/dev/null || true
+    sleep 2
+    if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then
+      ok "Ollama läuft auf 0.0.0.0:11434"
+    else
+      warn "Ollama-Dienst noch nicht erreichbar – prüfe:  systemctl status ollama"
+    fi
+    info "Modell laden, z. B.:  ollama pull llama3.1   (oder im HUD unter ⚙)"
+  fi
 else
   info "Ollama-Installation übersprungen (--no-ollama)."
 fi

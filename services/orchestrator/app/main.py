@@ -315,7 +315,31 @@ async def api_settings_save(request: Request, patch: dict = Body(...)) -> JSONRe
 @app.get("/api/models")
 async def api_models() -> JSONResponse:
     o = settings_mod.ollama_provider()
-    return JSONResponse({"available": await o.models_detailed(), "running": await o.running()})
+    return JSONResponse({"available": await o.models_detailed(), "running": await o.running(),
+                         "reachable": (await o.health())["reachable"]})
+
+
+@app.post("/api/models/pull")
+async def api_model_pull(request: Request, data: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "kein Modellname"}, status_code=400)
+    audit.log(getattr(request.state, "username", "-"), "model_pull", name)
+    asyncio.create_task(settings_mod.ollama_provider().ensure_model(name, bus))
+    return JSONResponse({"ok": True, "note": "Download läuft – Fortschritt im Live-Log."})
+
+
+@app.post("/api/models/delete")
+async def api_model_delete(request: Request, data: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    name = (data.get("name") or "").strip()
+    ok = await settings_mod.ollama_provider().delete_model(name)
+    if ok:
+        audit.log(getattr(request.state, "username", "-"), "model_delete", name)
+    return JSONResponse({"ok": ok})
 
 
 # ---- Backup / Restore ------------------------------------------------------
