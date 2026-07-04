@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import os
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -41,6 +42,40 @@ def write_scheduled(dest_dir: str, keep: int = 7) -> str:
         except Exception:  # noqa: BLE001
             pass
     return str(fn)
+
+
+def git_sync(dest_dir: str, remote: str) -> tuple[bool, str]:
+    """Backup-Ordner in ein Git-Remote pushen (offsite/NAS).
+
+    remote z. B. https://<user>:<token>@github.com/<user>/<repo>.git
+    Best-effort; initialisiert das Repo bei Bedarf.
+    """
+    dest = Path(dest_dir)
+    if not remote or not dest.exists():
+        return False, "kein Remote/Ordner"
+
+    def _git(*args: str, **kw) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", str(dest), *args],
+                              capture_output=True, text=True, timeout=120, **kw)
+
+    try:
+        if not (dest / ".git").exists():
+            _git("init")
+            _git("config", "user.email", "vault@local")
+            _git("config", "user.name", "V.A.U.L.T.")
+        # Remote setzen/aktualisieren
+        if _git("remote", "get-url", "origin").returncode != 0:
+            _git("remote", "add", "origin", remote)
+        else:
+            _git("remote", "set-url", "origin", remote)
+        _git("add", "-A")
+        _git("commit", "-m", f"backup {dt.datetime.now():%Y-%m-%d %H:%M:%S}")
+        push = _git("push", "-u", "origin", "HEAD:main", "--force")
+        if push.returncode != 0:
+            return False, (push.stderr or push.stdout).strip()[:300]
+        return True, "gepusht"
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
 
 
 def restore(data: bytes) -> dict:

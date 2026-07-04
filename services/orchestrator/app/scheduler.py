@@ -53,9 +53,15 @@ async def scheduler_loop(bus: EventBus) -> None:
                 interval = float(cfg.get("backup_interval_hours", 24) or 24) * 3600
                 if last_bk_dt is None or (now - last_bk_dt).total_seconds() >= interval:
                     try:
-                        path = backup_mod.write_scheduled(cfg.get("backup_dir", "/backups"),
-                                                          int(cfg.get("backup_keep", 7)))
+                        bdir = cfg.get("backup_dir", "/backups")
+                        path = backup_mod.write_scheduled(bdir, int(cfg.get("backup_keep", 7)))
                         await bus.publish({"type": "backup", "state": "done", "path": path})
+                        remote = cfg.get("backup_git_remote", "")
+                        if remote:
+                            ok, msg = backup_mod.git_sync(bdir, remote)
+                            await bus.publish({"type": "backup",
+                                               "state": "git-ok" if ok else "git-error",
+                                               "detail": msg})
                     except Exception as exc:  # noqa: BLE001
                         await bus.publish({"type": "backup", "state": "error", "error": str(exc)})
                     state["_backup"] = now.isoformat()

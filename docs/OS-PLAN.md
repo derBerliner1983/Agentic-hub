@@ -262,9 +262,17 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 - **Live-Log** im Board: Coder-/Board-/Modell-/Backup-Events laufen live unten
   im Kanban durch.
 
-**Backlog (noch offen)**
-- Runner-Profile: **Android-Emulator** & **Windows-VM** (schwer, Emulatoren/VMs nötig)
-- Backup-Ziel extern (Git/USB/NAS) statt nur lokalem Ordner
+**Phase 13 – erledigt ✅**
+- **Externes Backup-Ziel**: optionaler Git-Remote-Push nach jedem Auto-Backup
+  (`backup_git_remote`), offsite/NAS. `git` jetzt im Image (behebt auch den
+  UPDATE-Button, der git braucht). USB/NAS zusätzlich via `backup_dir`-Pfad.
+- **Erweiterbare Runner-Profile**: eigene Profile über `instance/runners.json`
+  ohne Code-Änderung; Doku inkl. **Android-Emulator** & **Windows-VM**-Beispiele
+  in `docs/RUNNER-PROFILES.md` (mit ehrlichen KVM-/privileged-Voraussetzungen).
+
+**Backlog (bewusst offen)**
+- Android/Windows als eingebaute Profile mit `--privileged`/`/dev/kvm`
+  (erfordert Host-KVM; als Sonderbehandlung im Executor umzusetzen)
 
 ---
 

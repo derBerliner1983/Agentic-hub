@@ -22,6 +22,7 @@ _DEFAULTS = {
     "backup_interval_hours": 24,
     "backup_keep": 7,
     "backup_dir": os.environ.get("BACKUP_DIR", "/backups"),
+    "backup_git_remote": "",   # optional: offsite-Push (https://user:token@host/repo.git)
 }
 
 
@@ -53,6 +54,7 @@ def public() -> dict:
         "backup_enabled": d["backup_enabled"],
         "backup_interval_hours": d["backup_interval_hours"],
         "backup_keep": d["backup_keep"],
+        "backup_git_set": bool(d["backup_git_remote"]),
     }
 
 

@@ -157,13 +157,18 @@
         <input id="bk-keep" type="number" value="${s.backup_keep}" style="max-width:70px"/>
         <span class="hint2">behalten</span>
         <button class="btn" id="bk-save">Speichern</button>
-      </div>`);
+      </div>
+      <label>Offsite-Push (Git-Remote) ${s.backup_git_set ? "✓ gesetzt" : ""}
+        <input id="bk-git" type="password" placeholder="https://user:token@host/repo.git (leer = behalten)"/></label>`);
 
     document.getElementById("bk-save").onclick = async () => {
+      const patch = { backup_enabled: document.getElementById("bk-enabled").checked,
+        backup_interval_hours: parseInt(document.getElementById("bk-interval").value, 10) || 24,
+        backup_keep: parseInt(document.getElementById("bk-keep").value, 10) || 7 };
+      const git = document.getElementById("bk-git").value.trim();
+      if (git) patch.backup_git_remote = git;
       await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ backup_enabled: document.getElementById("bk-enabled").checked,
-          backup_interval_hours: parseInt(document.getElementById("bk-interval").value, 10) || 24,
-          backup_keep: parseInt(document.getElementById("bk-keep").value, 10) || 7 }) });
+        body: JSON.stringify(patch) });
       document.getElementById("restore-msg").textContent = "Backup-Einstellungen gespeichert.";
     };
 

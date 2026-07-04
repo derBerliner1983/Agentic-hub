@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System-Abhängigkeiten: ffmpeg (Audio-Decode für STT), curl/tar (Piper laden)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg curl ca-certificates tar \
+      ffmpeg curl ca-certificates tar git \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker-CLI (nur Client) – für den Code-Executor (spawnt Wegwerf-Container

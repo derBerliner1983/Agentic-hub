@@ -17,6 +17,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from . import store
+
 DEFAULT_TIMEOUT = int(os.environ.get("EXEC_TIMEOUT", "40"))
 
 # Runner-Profile: Sprache → (Image, Startbefehl, Hauptdatei, Netz-Default, Timeout)
@@ -35,6 +37,21 @@ PROFILES: dict[str, dict] = {
 }
 
 
+def all_profiles() -> dict:
+    """Eingebaute + benutzerdefinierte Profile (instance/runners.json).
+
+    So lassen sich eigene Runner ergänzen, z. B. für Android/Windows, ohne Code
+    zu ändern – siehe docs/RUNNER-PROFILES.md.
+    """
+    custom = store.load("runners.json", {}) or {}
+    merged = dict(PROFILES)
+    if isinstance(custom, dict):
+        for name, prof in custom.items():
+            if isinstance(prof, dict) and prof.get("image") and prof.get("cmd") and prof.get("file"):
+                merged[name] = prof
+    return merged
+
+
 def available() -> bool:
     if not shutil.which("docker"):
         return False
@@ -46,14 +63,14 @@ def available() -> bool:
 
 
 def supported_langs() -> list[str]:
-    return sorted(PROFILES.keys())
+    return sorted(all_profiles().keys())
 
 
 def run(lang: str, code: str, *, network: bool | None = None,
         timeout: int | None = None, files: dict | None = None) -> dict:
     """Führt Code aus. Liefert {ok, exit_code, stdout, stderr, skipped, reason}.
     network=None → Profil-Default; timeout=None → Profil-Default oder EXEC_TIMEOUT."""
-    prof = PROFILES.get(lang)
+    prof = all_profiles().get(lang)
     if not prof:
         return {"ok": True, "skipped": True, "reason": f"kein Runner für '{lang}'",
                 "exit_code": 0, "stdout": "", "stderr": ""}
