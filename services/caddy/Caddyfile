@@ -2,15 +2,18 @@
 #
 # Port 80  → leitet auf HTTPS um.
 # Port 443 → HUD über HTTPS mit intern signiertem Zertifikat.
-#            Beim ersten Aufruf zeigt der Browser eine Zertifikatswarnung
-#            (selbst-signiert) – „Erweitert" → „trotzdem fortfahren".
+#            Beim ersten Aufruf: Zertifikatswarnung „Erweitert → trotzdem fortfahren".
 #
-# 'local_certs' erzwingt global intern signierte Zertifikate (auch für IPs) –
-# so serviert Port 443 zuverlässig TLS.
+# WICHTIG: KEIN HSTS! Bei einer LAN-IP mit selbst-signiertem Zertifikat würde HSTS
+# den Browser zwingen, HTTPS auch auf dem HTTP-Port zu erzwingen (→ SSL-Fehler)
+# und die Zertifikatswarnung nicht mehr wegklickbar machen.
 
 {
 	auto_https disable_redirects
 	local_certs
+	servers {
+		protocols h1 h2
+	}
 }
 
 :80 {
@@ -20,7 +23,6 @@
 :443 {
 	reverse_proxy orchestrator:3000
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "no-referrer"
