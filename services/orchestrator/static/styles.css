@@ -94,6 +94,59 @@ body {
   width: 24px; height: 24px; border-radius: 4px; cursor: pointer; font-size: 13px; line-height: 1; }
 .mini-btn:hover { border-color: var(--gold); color: var(--gold); }
 
+/* View-Switch */
+.viewswitch { display: flex; gap: 2px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.viewswitch button { background: transparent; border: 0; color: var(--muted); font-family: var(--mono);
+  font-size: 10px; letter-spacing: .14em; padding: 6px 12px; cursor: pointer; }
+.viewswitch button.active { background: rgba(216,180,90,.12); color: var(--gold); }
+
+/* Board-Ansicht */
+.board-view { display: none; grid-column: 1 / -1; grid-row: 2; flex-direction: column;
+  padding: 16px 20px; overflow: hidden; }
+body.view-board .vitals, body.view-board .stage, body.view-board .deck { display: none; }
+body.view-board .board-view { display: flex; }
+.board-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.board-spacer { flex: 1; }
+.board-bar select { background: #0a0c12; border: 1px solid var(--line); color: var(--fg);
+  font-family: var(--mono); font-size: 12px; padding: 7px 10px; min-width: 160px; }
+.switch { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); letter-spacing: .1em; cursor: pointer; }
+.switch input { width: 34px; height: 18px; appearance: none; background: #23262f; border-radius: 10px; position: relative; cursor: pointer; }
+.switch input:checked { background: var(--gold); }
+.switch input::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; top: 2px; left: 2px; transition: left .15s; }
+.switch input:checked::after { left: 18px; }
+.exec-badge { font-size: 10px; color: var(--muted); border: 1px solid var(--line); padding: 4px 8px; letter-spacing: .1em; }
+.exec-badge.on { color: var(--teal); border-color: var(--teal); }
+
+.board-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; flex: 1; overflow: hidden; }
+.col { display: flex; flex-direction: column; background: rgba(10,12,18,.5); border: 1px solid var(--line); min-height: 0; }
+.col-head { font-size: 10px; letter-spacing: .14em; color: var(--muted); padding: 10px 12px;
+  border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+.col-head span { color: var(--gold); }
+.col-body { padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.col-body .empty { color: var(--muted); font-size: 11px; text-align: center; padding: 12px 0; opacity: .4; }
+.card2 { background: #0d1017; border: 1px solid var(--line); border-left: 2px solid var(--line); padding: 10px; }
+.card2.doing { border-left-color: var(--magenta); }
+.card2.review { border-left-color: var(--gold); }
+.card2.done { border-left-color: var(--teal); opacity: .85; }
+.card2.failed { border-left-color: #e05a5a; }
+.c-title { font-size: 12px; color: var(--fg); line-height: 1.4; }
+.c-detail { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.c-err { font-size: 10px; color: #e07a7a; margin-top: 6px; }
+.stars { margin-top: 6px; }
+.star { color: #33373f; cursor: pointer; font-size: 14px; }
+.star.on { color: var(--gold); }
+.lnk { background: none; border: 0; color: var(--teal); font-family: var(--mono); font-size: 10px;
+  cursor: pointer; padding: 4px 0; text-decoration: underline; }
+.c-actions { display: flex; gap: 4px; margin-top: 8px; }
+.c-actions button { background: transparent; border: 1px solid var(--line); color: var(--muted);
+  font-size: 11px; cursor: pointer; padding: 2px 7px; }
+.c-actions button:hover { border-color: var(--gold); color: var(--gold); }
+.c-actions .del { margin-left: auto; }
+pre.result { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--fg);
+  max-height: 60vh; overflow-y: auto; background: #0a0c12; padding: 12px; border: 1px solid var(--line); }
+@media (max-width: 900px) { .board-cols { grid-template-columns: repeat(2, 1fr); overflow-y: auto; } }
+
 /* Modal */
 .modal-root { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
 .modal { width: min(760px, 92vw); max-height: 86vh; overflow-y: auto; background: var(--surface, #12141b);

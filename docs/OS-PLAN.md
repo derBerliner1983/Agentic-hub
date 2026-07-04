@@ -388,6 +388,40 @@ Das HUD ist ab jetzt **standardmäßig geschützt**:
 - Ehrlicher Hinweis: über HTTP (Port 3000) läuft der Cookie unverschlüsselt durchs
   LAN – für Login + Voice **HTTPS (Port 3443)** benutzen.
 
+## 14. Kanban-Board, Autonom-Modus & echte Code-Ausführung (Phase 9)
+
+### 14.1 Kanban-Board (eigene Ansicht)
+Umschalter oben im HUD: **GEHIRN ↔ BOARD**. Das Board zeigt Projekte mit Karten
+in Spalten `To-Do · Doing · Review · Done · Failed`. Du kannst:
+- Projekte anlegen (Typ `code` = mit echtem Test), Ziel automatisch in Karten
+  zerlegen (⚙ Plan → Planner-Agent), Karten manuell hinzufügen
+- Karten per ◀▶ verschieben, mit ★ **bewerten**, Ergebnis ansehen, löschen
+- Persistiert in `instance/board.json`.
+
+### 14.2 Autonom-Modus („wenn er Zeit hat")
+Ein Hintergrund-Worker (`worker.py`) nimmt sich – wenn der **Autonom-Schalter**
+an ist und ein Modell verbunden – die nächste **To-Do**-Karte, arbeitet sie ab
+(immer nur eine gleichzeitig) und legt das Ergebnis in **Review** zur Bewertung.
+So läuft V.A.U.L.T. nicht nur im Assistenten-Modus, sondern erledigt Projekte
+selbstständig im Hintergrund.
+
+### 14.3 Echte Code-Ausführung + Selbsttest-Schleife
+- `executor.py` startet über den docker.sock **Wegwerf-Container** und führt Code
+  wirklich aus (Python/Node/Bash), mit Limits (512 MB, 1 CPU, PIDs), Timeout und
+  standardmäßig **ohne Netzwerk**. Code kommt per `docker cp` rein (kein geteiltes FS nötig).
+- `coder_loop.py`: **schreiben → ausführen → echten Fehler an den Coder → fixen →
+  erneut ausführen**, bis es läuft oder das Limit erreicht ist. Genau das
+  „er testet selbst und fixt sich, bis der Code geht".
+- Docker-CLI ist im Orchestrator-Image (nur Client, kein Daemon).
+
+**Ehrliche Grenzen / Sicherheit:**
+- Real getestet werden **Python/Node/Bash/Web-Logik**. **Android/Windows-GUI** oder
+  Browser-E2E brauchen Emulatoren/VMs → als „Runner-Profile" in `executor.py`
+  erweiterbar, aber noch nicht enthalten.
+- Der Executor nutzt den Host-Docker – Wegwerf-Container sind isoliert (kein Netz,
+  Limits), aber der Zugriff auf den docker.sock ist mächtig. Für einen persönlichen
+  LAN-Server okay; nicht ungeschützt ins Internet stellen.
+
 ### 10.6 Nächster Bau-Schritt (Vorschlag)
 **Phase 1-Gerüst erzeugen:** `docker-compose.yml`, FastAPI-Orchestrator mit
 Ollama-Adapter + Health-Check + WebSocket, und ein minimales Next.js-HUD, das den

@@ -52,6 +52,20 @@ Aktualisieren (zieht neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
   Beim Coder werden Code-Blöcke zusätzlich **real syntax-geprüft** (Sandbox), Fehler
   fließen automatisch in die Nachbesserung.
 
+## Board & Autonom-Modus
+
+Oben im HUD schaltest du zwischen **GEHIRN** (Assistent) und **BOARD** (Kanban) um.
+
+- **Projekte** anlegen (Typ *code* = mit echtem Test), Ziel per **⚙ Plan** automatisch
+  in Karten zerlegen, Karten hinzufügen.
+- Karten wandern `To-Do → Doing → Review → Done`, du **bewertest** mit Sternen.
+- **Autonom-Modus** an → ein Hintergrund-Worker arbeitet To-Do-Karten selbstständig
+  ab („wenn er Zeit hat") und legt Ergebnisse in *Review*.
+- **Echte Code-Ausführung:** Bei Code-Karten schreibt der Agent Code, **führt ihn in
+  einem Wegwerf-Container aus**, und fixt sich bei Fehlern **selbst** in einer
+  Schleife (schreiben → testen → Fehler → fixen → erneut), bis es läuft. Python/Node/
+  Bash out-of-the-box; Android/Windows-GUI folgt über erweiterbare Runner-Profile.
+
 ## Sicherheit
 
 - **Anmeldung mit MFA:** Beim ersten Aufruf richtest du unter `/setup` ein Passwort +

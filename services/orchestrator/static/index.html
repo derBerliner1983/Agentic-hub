@@ -19,6 +19,10 @@
         <span data-k="link">LINK · <b>OFFLINE</b></span>
         <span data-k="runner">RUNNER · <b>IDLE</b></span>
       </div>
+      <div class="viewswitch" id="viewswitch">
+        <button data-view="brain" class="active">GEHIRN</button>
+        <button data-view="board">BOARD</button>
+      </div>
       <div class="clock" id="clock">--:--</div>
     </header>
 
@@ -74,6 +78,22 @@
     </aside>
   </div>
 
+    <!-- BOARD-Ansicht (Kanban, autonome Projekte) -->
+    <section class="board-view" id="board-view">
+      <div class="board-bar">
+        <label class="switch"><input type="checkbox" id="auto-toggle" />
+          <span>AUTONOM-MODUS</span></label>
+        <span class="exec-badge" id="exec-badge">EXECUTOR · ?</span>
+        <span class="board-spacer"></span>
+        <select id="proj-select"></select>
+        <button class="btn" id="proj-add">＋ Projekt</button>
+        <button class="btn" id="proj-plan" title="Ziel in Karten zerlegen">⚙ Plan</button>
+        <button class="btn" id="card-add">＋ Karte</button>
+        <button class="btn" id="proj-del" title="Projekt löschen">🗑</button>
+      </div>
+      <div class="board-cols" id="board-cols"></div>
+    </section>
+
   <!-- Modal-Overlay für Builder / Settings -->
   <div class="modal-root" id="modal-root" hidden>
     <div class="modal" id="modal">
@@ -87,5 +107,6 @@
   <script src="/hud.js"></script>
   <script src="/voice.js"></script>
   <script src="/ui.js"></script>
+  <script src="/board.js"></script>
 </body>
 </html>

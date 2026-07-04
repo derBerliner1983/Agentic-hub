@@ -126,6 +126,31 @@
     }
   }
 
+  function handleBoard(msg) {
+    if (msg.state === "doing") {
+      taskcard.hidden = false;
+      taskTitle.textContent = "AUTONOM · " + (msg.title || "");
+      taskState.textContent = "arbeitet …";
+      activeTasks = 1; brain.setActiveDomain("ops"); applyState();
+    } else if (msg.state === "review" || msg.state === "done" || msg.state === "failed") {
+      taskState.textContent = msg.state === "failed" ? "fehlgeschlagen" : "→ Review ✓";
+      activeTasks = 0; brain.setActiveDomain(null); applyState();
+      setTimeout(() => { if (activeTasks === 0) taskcard.hidden = true; }, 3500);
+    }
+  }
+
+  function handleCoder(msg) {
+    taskcard.hidden = false;
+    taskTitle.textContent = "CODER · SELBSTTEST";
+    const m = { starting: "schreibt Code …", running: `führt aus (Versuch ${msg.attempt}) …`,
+      fixing: `fixt Fehler (Versuch ${msg.attempt}) …`, passed: "läuft ✓",
+      failed: "Limit erreicht ✕", skipped: "Executor aus" };
+    taskState.textContent = m[msg.state] || msg.state;
+    if (["starting", "running", "fixing"].includes(msg.state)) {
+      activeTasks = 1; brain.setActiveDomain("research"); applyState();
+    }
+  }
+
   // ---- linke Spalte: Vitals ----------------------------------------------
   async function loadVitals() {
     try {
@@ -162,6 +187,11 @@
       else if (msg.type === "task") handleTask(msg);
       else if (msg.type === "project") handleProject(msg);
       else if (msg.type === "model") handleModel(msg);
+      else if (msg.type === "board" || msg.type === "coder") {
+        window.dispatchEvent(new CustomEvent("vault-board"));
+        if (msg.type === "coder") handleCoder(msg);
+        else handleBoard(msg);
+      }
     };
     ws.onclose = () => {
       connected = false; applyState(); setDeckEnabled();

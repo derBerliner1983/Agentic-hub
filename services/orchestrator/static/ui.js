@@ -11,6 +11,7 @@
     root.hidden = false;
   }
   function close() { root.hidden = true; }
+  window.VaultModal = open;   // von board.js für Detail-Ansicht genutzt
   document.getElementById("modal-close").addEventListener("click", close);
   root.addEventListener("click", (e) => { if (e.target === root) close(); });
 

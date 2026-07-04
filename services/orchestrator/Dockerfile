@@ -7,6 +7,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg curl ca-certificates tar \
     && rm -rf /var/lib/apt/lists/*
 
+# Docker-CLI (nur Client) – für den Code-Executor (spawnt Wegwerf-Container
+# über den gemounteten docker.sock). Kein Daemon im Image.
+ARG DOCKER_CLI_VER=27.3.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VER}.tgz" \
+      | tar xz -C /tmp docker/docker \
+    && mv /tmp/docker/docker /usr/local/bin/docker && rm -rf /tmp/docker
+
 # Python-Abhängigkeiten (inkl. faster-whisper)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from .events import EventBus
 from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
-from . import auth, voice, settings as settings_mod, skills as skills_mod, agents as agents_mod
+from . import (auth, voice, executor, board as board_mod, worker as worker_mod,
+               settings as settings_mod, skills as skills_mod, agents as agents_mod)
 from .projects import run_project
 
 app = FastAPI(title="V.A.U.L.T. Orchestrator")
@@ -50,13 +51,15 @@ async def _status_poller() -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     app.state.poller = asyncio.create_task(_status_poller())
+    app.state.worker = asyncio.create_task(worker_mod.worker_loop(bus))
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    app.state.poller.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await app.state.poller
+    for t in (app.state.poller, app.state.worker):
+        t.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await t
 
 
 # ---- Anmeldung + MFA --------------------------------------------------------
@@ -214,6 +217,79 @@ async def api_project_run(data: dict = Body(...)) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "kein Ziel"}, status_code=400)
     asyncio.create_task(run_project(goal, settings_mod.ollama_provider(), bus))
     return JSONResponse({"ok": True})
+
+
+# ---- Kanban-Board & Autonom-Modus -----------------------------------------
+@app.get("/api/board")
+async def api_board() -> JSONResponse:
+    b = board_mod.get_board()
+    return JSONResponse({**b, "executor": executor.available(),
+                         "exec_langs": executor.supported_langs()})
+
+
+@app.post("/api/board/autonomous")
+async def api_board_autonomous(data: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(board_mod.set_autonomous(bool(data.get("on"))))
+
+
+@app.post("/api/board/projects")
+async def api_board_add_project(data: dict = Body(...)) -> JSONResponse:
+    return JSONResponse(board_mod.add_project(
+        data.get("title", ""), data.get("goal", ""),
+        data.get("detail", ""), data.get("type", "general")))
+
+
+@app.delete("/api/board/projects/{pid}")
+async def api_board_del_project(pid: str) -> JSONResponse:
+    return JSONResponse({"ok": board_mod.delete_project(pid)})
+
+
+@app.post("/api/board/projects/{pid}/cards")
+async def api_board_add_card(pid: str, data: dict = Body(...)) -> JSONResponse:
+    card = board_mod.add_card(pid, data.get("title", ""), data.get("detail", ""),
+                              data.get("status", "todo"))
+    return JSONResponse(card or {"error": "Projekt nicht gefunden"},
+                        status_code=200 if card else 404)
+
+
+@app.post("/api/board/projects/{pid}/plan")
+async def api_board_plan(pid: str) -> JSONResponse:
+    """Ziel automatisch in Karten zerlegen (Planner-Agent)."""
+    proj = board_mod.get_project(pid)
+    if not proj:
+        return JSONResponse({"error": "Projekt nicht gefunden"}, status_code=404)
+    asyncio.create_task(_plan_cards(pid, proj.get("goal") or proj["title"]))
+    return JSONResponse({"ok": True})
+
+
+@app.patch("/api/board/projects/{pid}/cards/{cid}")
+async def api_board_update_card(pid: str, cid: str, patch: dict = Body(...)) -> JSONResponse:
+    card = board_mod.update_card(pid, cid, patch)
+    return JSONResponse(card or {"error": "nicht gefunden"}, status_code=200 if card else 404)
+
+
+@app.delete("/api/board/projects/{pid}/cards/{cid}")
+async def api_board_del_card(pid: str, cid: str) -> JSONResponse:
+    return JSONResponse({"ok": board_mod.delete_card(pid, cid)})
+
+
+async def _plan_cards(pid: str, goal: str) -> None:
+    ollama = settings_mod.ollama_provider()
+    planner = agents_mod.get_agent("planner")
+    try:
+        await ollama.ensure_model(planner["model"], bus)
+        raw = await ollama.generate(
+            f"Ziel: {goal}\n\nZerlege es in 3-6 konkrete Arbeitsschritte. "
+            f"Gib nur eine nummerierte Liste zurück, ein Schritt pro Zeile.",
+            model=planner["model"], system=planner["system"])
+        import re
+        for line in raw.splitlines():
+            t = re.sub(r"^\s*[\d\-\*\.\)]+\s*", "", line).strip()
+            if t:
+                board_mod.add_card(pid, t[:120], status="todo")
+        await bus.publish({"type": "board", "project": pid, "state": "planned"})
+    except Exception as exc:  # noqa: BLE001
+        await bus.publish({"type": "board", "project": pid, "state": "plan-error", "error": str(exc)})
 
 
 # ---- System-Update (UPDATE-Button) ----------------------------------------
