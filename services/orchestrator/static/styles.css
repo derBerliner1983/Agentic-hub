@@ -79,6 +79,7 @@ body {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   backdrop-filter: blur(20px) saturate(160%); flex-wrap: wrap;
 }
+.topbar-end { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .theme-toggle { width: 32px; height: 32px; border-radius: var(--r-sm); border: 1px solid var(--border);
   background: var(--surface); color: var(--muted); cursor: pointer; font-size: 15px; flex-shrink: 0; }
 .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }

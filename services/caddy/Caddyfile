@@ -1,25 +1,23 @@
 # V.A.U.L.T. Reverse-Proxy
 #
-# Port 80  → leitet automatisch auf HTTPS um.
-# Port 443 → HUD über HTTPS mit intern signiertem Zertifikat (tls internal).
+# Port 80  → leitet auf HTTPS um.
+# Port 443 → HUD über HTTPS mit intern signiertem Zertifikat.
 #            Beim ersten Aufruf zeigt der Browser eine Zertifikatswarnung
-#            (selbst-signiert) – einmal „trotzdem fortfahren" klicken.
-#            Für eine echte Domain die 'tls internal'-Zeile entfernen und
-#            einen Hostnamen statt 'https://' eintragen.
+#            (selbst-signiert) – „Erweitert" → „trotzdem fortfahren".
+#
+# 'local_certs' erzwingt global intern signierte Zertifikate (auch für IPs) –
+# so serviert Port 443 zuverlässig TLS.
 
 {
-	# Wir definieren die HTTP→HTTPS-Weiterleitung selbst.
 	auto_https disable_redirects
+	local_certs
 }
 
-# Alles auf HTTP → dauerhaft auf HTTPS umleiten (gleicher Host).
-http:// {
+:80 {
 	redir https://{host}{uri} permanent
 }
 
-# HTTPS
-https:// {
-	tls internal
+:443 {
 	reverse_proxy orchestrator:3000
 	header {
 		Strict-Transport-Security "max-age=31536000"

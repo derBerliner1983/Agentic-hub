@@ -350,6 +350,11 @@
   document.getElementById("btn-build").addEventListener("click", openBuilder);
   document.getElementById("btn-settings").addEventListener("click", openSettings);
   document.getElementById("btn-update").addEventListener("click", doUpdate);
+  // Gut sichtbare Kopien oben in der Topbar
+  const bsTop = document.getElementById("btn-settings-top");
+  if (bsTop) bsTop.addEventListener("click", openSettings);
+  const buTop = document.getElementById("btn-update-top");
+  if (buTop) buTop.addEventListener("click", doUpdate);
   initProject();
 
   // Hell/Dunkel-Umschalter

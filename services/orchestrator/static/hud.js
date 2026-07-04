@@ -216,6 +216,8 @@
   }
 
   applyState();
+  // Deck sofort per HTTP befüllen – Buttons erscheinen auch, wenn der WebSocket lahmt
+  fetch("/api/status").then((r) => r.json()).then(handleStatus).catch(() => {});
   connect();
   loadVitals();
   setInterval(loadVitals, 12000);
