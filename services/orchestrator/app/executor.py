@@ -79,9 +79,10 @@ def run(lang: str, code: str, *, network: bool = False,
         proc = subprocess.run(["docker", "start", "-a", name],
                               capture_output=True, text=True, timeout=timeout + 25)
         exit_code = proc.returncode
+        artifacts = _collect_artifacts(name, prof["file"])
         return {"ok": exit_code == 0, "skipped": False, "exit_code": exit_code,
                 "stdout": proc.stdout[-8000:], "stderr": proc.stderr[-8000:],
-                "reason": "timeout" if exit_code == 124 else ""}
+                "artifacts": artifacts, "reason": "timeout" if exit_code == 124 else ""}
     except subprocess.TimeoutExpired:
         return {"ok": False, "skipped": False, "exit_code": 124,
                 "stdout": "", "stderr": f"Zeitüberschreitung nach {timeout}s", "reason": "timeout"}
@@ -91,3 +92,29 @@ def run(lang: str, code: str, *, network: bool = False,
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _collect_artifacts(name: str, entry_file: str, max_bytes: int = 200_000) -> dict:
+    """Vom Container in /work erzeugte Text-Dateien einsammeln (echte Deliverables)."""
+    out: dict[str, str] = {}
+    dst = Path(tempfile.mkdtemp(prefix="vault-art-"))
+    try:
+        subprocess.run(["docker", "cp", f"{name}:/work/.", str(dst)],
+                       capture_output=True, timeout=60)
+        for f in sorted(dst.rglob("*")):
+            if not f.is_file():
+                continue
+            rel = str(f.relative_to(dst))
+            if rel == entry_file or f.stat().st_size > max_bytes:
+                continue
+            try:
+                out[rel] = f.read_text(encoding="utf-8")
+            except Exception:  # noqa: BLE001 – Binärdatei überspringen
+                continue
+            if len(out) >= 25:
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        shutil.rmtree(dst, ignore_errors=True)
+    return out

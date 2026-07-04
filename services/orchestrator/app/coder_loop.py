@@ -35,7 +35,7 @@ def _extract_code(text: str, prefer: str | None = None) -> tuple[str, str]:
 
 
 async def build_and_test(goal: str, ollama: OllamaProvider, bus: EventBus,
-                         lang_hint: str | None = None) -> dict:
+                         lang_hint: str | None = None, network: bool = False) -> dict:
     coder = agents.get_agent("coder")
 
     async def emit(state: str, **extra):
@@ -56,17 +56,18 @@ async def build_and_test(goal: str, ollama: OllamaProvider, bus: EventBus,
     last = {"ok": False, "stderr": "", "stdout": ""}
     for attempt in range(1, MAX_ATTEMPTS + 1):
         await emit("running", attempt=attempt, lang=lang)
-        result = executor.run(lang, code)
+        result = executor.run(lang, code, network=network)
         last = result
         if result.get("skipped"):
             await emit("skipped", reason=result.get("reason"))
             return {"ok": False, "code": code, "lang": lang, "attempts": attempt,
                     "output": "", "error": result.get("reason", "Ausführung nicht möglich"),
-                    "tested": False}
+                    "tested": False, "artifacts": {}}
         if result["ok"]:
             await emit("passed", attempt=attempt)
             return {"ok": True, "code": code, "lang": lang, "attempts": attempt,
-                    "output": result["stdout"], "error": "", "tested": True}
+                    "output": result["stdout"], "error": "", "tested": True,
+                    "artifacts": result.get("artifacts", {})}
 
         # Fehlgeschlagen → mit echter Fehlermeldung fixen lassen
         err = (result["stderr"] or result["stdout"] or "").strip()[-2500:]
@@ -82,4 +83,5 @@ async def build_and_test(goal: str, ollama: OllamaProvider, bus: EventBus,
 
     await emit("failed", attempts=MAX_ATTEMPTS)
     return {"ok": False, "code": code, "lang": lang, "attempts": MAX_ATTEMPTS,
-            "output": last.get("stdout", ""), "error": last.get("stderr", ""), "tested": True}
+            "output": last.get("stdout", ""), "error": last.get("stderr", ""),
+            "tested": True, "artifacts": last.get("artifacts", {})}

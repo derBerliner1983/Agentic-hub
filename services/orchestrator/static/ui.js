@@ -119,7 +119,26 @@
         <input id="p-okey" type="password" placeholder="${s.openai_key_set ? "•••• (leer = behalten)" : "sk-…"}"/></label>
       <label>OpenAI-Modell <input id="p-omodel" value="${esc(s.openai_model)}"/></label>
       <button class="btn primary" id="p-save">Speichern</button>
-      <div class="hint2">Keys werden lokal in instance/settings.json gespeichert (nicht in Git).</div>`);
+      <div class="hint2">Keys werden lokal in instance/settings.json gespeichert (nicht in Git).</div>
+      <hr/>
+      <h4>Datensicherung</h4>
+      <div class="hint2">Sichert vault/ (Memory), instance/ (Config/Board) und Skills.</div>
+      <div class="b-cols" style="margin-top:8px">
+        <a class="btn" href="/api/backup" download>⤓ Backup herunterladen</a>
+        <label class="btn" style="text-align:center;cursor:pointer">⤒ Restore…
+          <input id="restore-file" type="file" accept=".gz,.tgz,application/gzip" hidden/></label>
+      </div>
+      <div class="hint2" id="restore-msg"></div>`);
+
+    const rf = document.getElementById("restore-file");
+    if (rf) rf.onchange = async () => {
+      if (!rf.files[0]) return;
+      if (!confirm("Backup einspielen? Vorhandene Dateien werden überschrieben.")) return;
+      const fd = new FormData(); fd.append("file", rf.files[0]);
+      const j = await fetch("/api/restore", { method: "POST", body: fd }).then((r) => r.json()).catch(() => ({}));
+      document.getElementById("restore-msg").textContent =
+        j.ok ? ("Wiederhergestellt: " + JSON.stringify(j.restored)) : ("Fehler: " + (j.error || "?"));
+    };
 
     document.getElementById("p-save").onclick = async () => {
       const patch = {

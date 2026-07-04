@@ -37,13 +37,17 @@ async def _process(project: dict, card: dict, bus: EventBus) -> None:
     await emit(state="doing", title=card["title"])
 
     ollama = settings_mod.ollama_provider()
+    artifacts: dict = {}
     try:
         if _is_code_card(project, card):
-            res = await coder_loop.build_and_test(goal, ollama, bus)
+            res = await coder_loop.build_and_test(
+                goal, ollama, bus, network=bool(project.get("network")))
+            artifacts = res.get("artifacts", {})
             result_md = (f"**Sprache:** {res['lang']} · **Versuche:** {res['attempts']} · "
                          f"**getestet:** {'ja' if res.get('tested') else 'nein'}\n\n"
                          f"```{res['lang']}\n{res['code']}\n```\n\n"
-                         f"**Ausgabe:**\n```\n{res.get('output','')[:1500]}\n```")
+                         f"**Ausgabe:**\n```\n{res.get('output','')[:1500]}\n```"
+                         + (f"\n\n**Erzeugte Dateien:** {', '.join(artifacts)}" if artifacts else ""))
             ok = res["ok"]
             err = res.get("error", "")
         else:
@@ -63,6 +67,12 @@ async def _process(project: dict, card: dict, bus: EventBus) -> None:
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{stamp}-{cid}.md").write_text(
             f"# {card['title']}\n\n{result_md}\n", encoding="utf-8")
+        # Erzeugte Dateien (Deliverables) als echte Dateien ablegen
+        for fn, content in (artifacts or {}).items():
+            safe = (d / "artifacts" / fn).resolve()
+            if str(safe).startswith(str((d / "artifacts").resolve())):
+                safe.parent.mkdir(parents=True, exist_ok=True)
+                safe.write_text(content, encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
 

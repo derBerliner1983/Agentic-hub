@@ -12,9 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from .events import EventBus
 from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
-from . import (auth, voice, executor, board as board_mod, worker as worker_mod,
-               settings as settings_mod, skills as skills_mod, agents as agents_mod)
+from . import (auth, voice, executor, backup as backup_mod, board as board_mod,
+               worker as worker_mod, settings as settings_mod, skills as skills_mod,
+               agents as agents_mod)
 from .projects import run_project
+
+FORCE_HTTPS = os.environ.get("FORCE_HTTPS") == "1"
+PUBLIC_HTTPS_PORT = os.environ.get("PUBLIC_HTTPS_PORT", "3443")
 
 app = FastAPI(title="V.A.U.L.T. Orchestrator")
 bus = EventBus()
@@ -69,6 +73,12 @@ _OPEN_PREFIXES = ("/auth/",)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    # Optional: Browser-Navigation auf HTTPS umleiten (FORCE_HTTPS=1)
+    if (FORCE_HTTPS and request.method == "GET"
+            and request.headers.get("x-forwarded-proto", request.url.scheme) != "https"
+            and not request.url.path.startswith("/api/")):
+        host = request.url.hostname or "localhost"
+        return RedirectResponse(f"https://{host}:{PUBLIC_HTTPS_PORT}{request.url.path}", status_code=308)
     resp = await call_next(request)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -240,6 +250,26 @@ async def api_settings_save(patch: dict = Body(...)) -> JSONResponse:
     return JSONResponse(settings_mod.public())
 
 
+# ---- Backup / Restore ------------------------------------------------------
+@app.get("/api/backup")
+async def api_backup() -> Response:
+    import datetime as _dt
+    data = await asyncio.to_thread(backup_mod.create_backup)
+    fn = f"vault-backup-{_dt.date.today().isoformat()}.tar.gz"
+    return Response(content=data, media_type="application/gzip",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+
+
+@app.post("/api/restore")
+async def api_restore(file: UploadFile) -> JSONResponse:
+    data = await file.read()
+    try:
+        res = await asyncio.to_thread(backup_mod.restore, data)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"Restore fehlgeschlagen: {exc}"}, status_code=400)
+    return JSONResponse({"ok": True, **res})
+
+
 # ---- Agents / Projekte (Agent-Mesh) ---------------------------------------
 @app.get("/api/agents")
 async def api_agents() -> JSONResponse:
@@ -277,7 +307,8 @@ async def api_board_autonomous(data: dict = Body(...)) -> JSONResponse:
 async def api_board_add_project(data: dict = Body(...)) -> JSONResponse:
     return JSONResponse(board_mod.add_project(
         data.get("title", ""), data.get("goal", ""),
-        data.get("detail", ""), data.get("type", "general")))
+        data.get("detail", ""), data.get("type", "general"),
+        bool(data.get("network", False))))
 
 
 @app.delete("/api/board/projects/{pid}")

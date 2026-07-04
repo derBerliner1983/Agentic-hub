@@ -221,6 +221,40 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
   SSH-Härtung, fail2ban, Auto-Updates – als Install-Option
 - HUD-Anmeldung mit Passwort + **MFA (TOTP/QR)**, geschützte API + WebSocket
   (Details: §13)
+- Security-Review-Fixes: Login-Brute-Force-Schutz, TOTP-Replay-Schutz,
+  Secure-Cookie, Security-Header, Path-Traversal-Schutz, SETUP_TOKEN (§13.4)
+
+**Phase 9 – Board, Autonom-Modus, echte Code-Ausführung**  ✅ (§14)
+
+**Phase 10 – Datensicherung & Deliverables**  ✅
+- **Backup/Restore** von vault/ + instance/ + skills als tar.gz (Download/Upload
+  im Settings-Panel, Restore mit Traversal-Schutz)
+- **Datei-Artefakte**: der Executor sammelt im Container erzeugte Dateien ein →
+  `vault/projects/<id>/artifacts/`
+- **Netzwerk-Option pro Code-Projekt** (für pip/npm install, API-Tests)
+- **`FORCE_HTTPS=1`**: leitet Browser-Zugriffe optional auf HTTPS um
+
+---
+
+## 15. Backlog / sinnvolle nächste Features (geplant)
+
+**Sicherheit/Betrieb**
+- Automatisches, geplantes Backup (Cron/Timer → Git/USB/NAS)
+- Audit-Log (wer hat wann Task/Projekt/Update ausgelöst)
+- fail2ban-Filter fürs HUD-Login (429er zusätzlich auf IP-Ebene sperren)
+- HTTP→HTTPS-Redirect standardmäßig / Login nur über HTTPS
+
+**Funktion**
+- Runner-Profile erweitern: **Web-E2E mit Playwright/Chromium** (vorinstalliert!),
+  später **Android-Emulator**- und **Windows-VM**-Profile
+- Scheduler/Cadence für Tasks (zeitgesteuert, wie „scheduled" im Video)
+- Modell-Auswahl pro Task/Agent im HUD + Anzeige geladener Ollama-Modelle/RAM
+- Streaming-Ausgabe im HUD (Antwort live tippen) + Projekt-Detail mit Live-Log
+- Mehrbenutzer + Rollen (für Team/Kunden – „Distribution" aus dem Video)
+
+---
+
+## Alt-Referenz (frühe Phasenskizze)
 
 **Phase 5 – Voice**  ✅
 - Lokales STT (faster-whisper) + TTS (Piper, deutsche Stimme), „Hold Space to talk",

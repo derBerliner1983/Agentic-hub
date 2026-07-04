@@ -65,6 +65,12 @@ Oben im HUD schaltest du zwischen **GEHIRN** (Assistent) und **BOARD** (Kanban) 
   einem Wegwerf-Container aus**, und fixt sich bei Fehlern **selbst** in einer
   Schleife (schreiben → testen → Fehler → fixen → erneut), bis es läuft. Python/Node/
   Bash out-of-the-box; Android/Windows-GUI folgt über erweiterbare Runner-Profile.
+- **Deliverables:** erzeugte Dateien landen als echte Dateien in
+  `vault/projects/<id>/artifacts/`. Code-Projekte können optional **Netzwerk** für
+  `pip/npm install` bekommen.
+
+**Backup/Restore:** im ⚙-Settings-Panel kannst du dein „Gehirn" (vault/ + instance/ +
+Skills) als `tar.gz` **herunterladen** und wieder **einspielen**.
 
 ## Sicherheit
 
