@@ -8,10 +8,10 @@
  */
 (function () {
   const RGB = {
-    offline: "120,130,145",
-    idle:    "216,180,90",
-    working: "224,90,192",
-    scan:    "53,214,195",
+    offline: "82,82,91",       // Zinc – dezent
+    idle:    "52,211,153",     // Emerald (Akzent)
+    working: "96,165,250",     // Info-Blau
+    scan:    "251,191,36",     // Amber
   };
   // Domänen im Uhrzeigersinn -> Winkelsektoren
   const DOMAINS = ["inbox", "research", "content", "ops"];

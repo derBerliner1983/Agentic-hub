@@ -30,13 +30,19 @@ if ! have curl; then
 fi
 
 if have ollama; then
-  echo "  • Aktualisiere Ollama (offizielles Skript)…"
+  echo "  • Aktualisiere Ollama (offizielles Skript, kann etwas dauern)…"
 else
-  echo "  • Installiere Ollama (erkennt AMD/ROCm)…"
+  echo "  • Installiere Ollama (erkennt AMD/ROCm, lädt ROCm-Pakete – dauert etwas)…"
 fi
-curl -fsSL https://ollama.com/install.sh | $SUDO sh \
-  && echo "  ✓ Ollama installiert/aktualisiert" \
-  || { echo "  ⚠ Ollama-Setup fehlgeschlagen (Netzwerk/Proxy?)."; exit 0; }
+# Ausgabe ins Log umleiten (der Installer druckt sonst zig Fortschrittszeilen).
+LOG=/tmp/vault-ollama-install.log
+if curl -fsSL https://ollama.com/install.sh | $SUDO sh >"$LOG" 2>&1; then
+  echo "  ✓ Ollama installiert/aktualisiert   (Details: $LOG)"
+else
+  echo "  ⚠ Ollama-Setup fehlgeschlagen. Letzte Zeilen:"
+  tail -n 5 "$LOG" | sed 's/^/      /'
+  exit 0
+fi
 
 # 0.0.0.0-Bindung sicherstellen – vorhandene Override-Datei NICHT überschreiben
 # (bewahrt z. B. deinen HSA_OVERRIDE_GFX_VERSION-Eintrag).
