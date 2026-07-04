@@ -25,7 +25,33 @@ PBKDF_ITER = 200_000
 SESSION_TTL = 12 * 3600
 COOKIE = "vault_session"
 
+# Brute-Force-Schutz (in-memory, pro Client-Key)
+LOCK_MAX = 5            # so viele Fehlversuche …
+LOCK_WINDOW = 300       # … innerhalb dieser Sekunden →
+LOCK_TIME = 300         # … Sperre für diese Sekunden
+
 _pending: dict[str, dict] = {}   # Setup-Zwischenspeicher (nur im RAM)
+_fails: dict[str, list[float]] = {}   # Fehlversuche pro Client-Key
+
+
+# ---- Brute-Force-Schutz -----------------------------------------------------
+def locked_for(key: str) -> int:
+    """Sekunden verbleibende Sperre für diesen Client-Key (0 = frei)."""
+    now = time.time()
+    hits = [t for t in _fails.get(key, []) if now - t < LOCK_WINDOW]
+    _fails[key] = hits
+    if len(hits) >= LOCK_MAX:
+        remaining = int(LOCK_TIME - (now - hits[-LOCK_MAX]))
+        return max(0, remaining)
+    return 0
+
+
+def record_fail(key: str) -> None:
+    _fails.setdefault(key, []).append(time.time())
+
+
+def clear_fails(key: str) -> None:
+    _fails.pop(key, None)
 
 
 # ---- Status ----------------------------------------------------------------
@@ -61,13 +87,20 @@ def _totp_at(secret: str, counter: int, digits: int = 6) -> str:
     return str(code).zfill(digits)
 
 
-def verify_totp(secret: str, code: str, window: int = 1) -> bool:
+def totp_counter(secret: str, code: str, window: int = 1) -> int:
+    """Passender 30s-Zähler für den Code, oder -1. Für Replay-Schutz."""
     code = (code or "").strip().replace(" ", "")
     if not code.isdigit():
-        return False
+        return -1
     now = int(time.time() // 30)
-    return any(hmac.compare_digest(_totp_at(secret, now + w), code)
-               for w in range(-window, window + 1))
+    for w in range(-window, window + 1):
+        if hmac.compare_digest(_totp_at(secret, now + w), code):
+            return now + w
+    return -1
+
+
+def verify_totp(secret: str, code: str, window: int = 1) -> bool:
+    return totp_counter(secret, code, window) >= 0
 
 
 # ---- Setup-Flow --------------------------------------------------------------
@@ -102,8 +135,14 @@ def login(password: str, code: str) -> str | None:
     if not hmac.compare_digest(_hash_pw(password or "", bytes.fromhex(c["salt"])),
                                c["pwhash"]):
         return None
-    if not verify_totp(c["totp_secret"], code):
+    counter = totp_counter(c["totp_secret"], code)
+    if counter < 0:
         return None
+    # Replay-Schutz: ein einmal genutzter Code (bzw. älterer) wird abgelehnt.
+    if counter <= int(c.get("totp_last", 0)):
+        return None
+    c["totp_last"] = counter
+    store.save("auth.json", c)
     return create_session()
 
 

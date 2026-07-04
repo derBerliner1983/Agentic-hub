@@ -388,6 +388,19 @@ Das HUD ist ab jetzt **standardmäßig geschützt**:
 - Ehrlicher Hinweis: über HTTP (Port 3000) läuft der Cookie unverschlüsselt durchs
   LAN – für Login + Voice **HTTPS (Port 3443)** benutzen.
 
+### 13.4 Zusätzliche Härtung (Security-Review)
+- **Brute-Force-Schutz** am HUD-Login: 5 Fehlversuche / 5 min pro Client-IP →
+  Sperre (HTTP 429). Gilt auch für die Setup-Code-Prüfung.
+- **TOTP-Replay-Schutz**: ein einmal genutzter Code (oder älterer) wird abgelehnt
+  (`totp_last`-Zähler in auth.json).
+- **Secure-Cookie**: das Session-Cookie wird bei HTTPS mit `Secure` gesetzt
+  (erkennt `X-Forwarded-Proto` von Caddy).
+- **SETUP_TOKEN** (optional): schließt das „Trust-on-first-use"-Fenster – ist die
+  Umgebungsvariable gesetzt, muss das Token bei der Ersteinrichtung mitgegeben werden.
+- **Security-Header** (Orchestrator + Caddy): `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `HSTS` (auf 443).
+- **Path-Traversal-Schutz** bei der Skill-Auflösung (nur Slug-IDs).
+
 ## 14. Kanban-Board, Autonom-Modus & echte Code-Ausführung (Phase 9)
 
 ### 14.1 Kanban-Board (eigene Ansicht)

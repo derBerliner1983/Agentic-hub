@@ -68,6 +68,16 @@ _OPEN_PREFIXES = ("/auth/",)
 
 
 @app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    return resp
+
+
+@app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if not auth.required():
         return await call_next(request)
@@ -99,10 +109,28 @@ async def page_login():
     return FileResponse("static/login.html")
 
 
+def _client_key(request: Request) -> str:
+    # Hinter Caddy: echte Client-IP aus X-Forwarded-For, sonst Peer-IP.
+    xff = request.headers.get("x-forwarded-for", "")
+    return (xff.split(",")[0].strip() if xff else "") or (request.client.host if request.client else "unknown")
+
+
+def _is_https(request: Request) -> bool:
+    return (request.headers.get("x-forwarded-proto") == "https"
+            or request.url.scheme == "https")
+
+
+# Optionaler Schutz gegen „Trust-on-first-use": wenn SETUP_TOKEN gesetzt ist,
+# muss es bei der Ersteinrichtung mitgegeben werden.
+_SETUP_TOKEN = os.environ.get("SETUP_TOKEN", "")
+
+
 @app.post("/auth/setup")
-async def auth_setup(data: dict = Body(...)) -> JSONResponse:
+async def auth_setup(request: Request, data: dict = Body(...)) -> JSONResponse:
     if auth.configured():
         return JSONResponse({"ok": False, "error": "bereits eingerichtet"}, status_code=403)
+    if _SETUP_TOKEN and data.get("setup_secret", "") != _SETUP_TOKEN:
+        return JSONResponse({"ok": False, "error": "Setup-Token falsch"}, status_code=403)
     pw = data.get("password") or ""
     if len(pw) < 8:
         return JSONResponse({"ok": False, "error": "Passwort min. 8 Zeichen"}, status_code=400)
@@ -110,20 +138,33 @@ async def auth_setup(data: dict = Body(...)) -> JSONResponse:
 
 
 @app.post("/auth/setup/verify")
-async def auth_setup_verify(data: dict = Body(...)) -> JSONResponse:
+async def auth_setup_verify(request: Request, data: dict = Body(...)) -> JSONResponse:
+    key = _client_key(request)
+    wait = auth.locked_for(key)
+    if wait:
+        return JSONResponse({"ok": False, "error": f"Zu viele Versuche – warte {wait}s"}, status_code=429)
     if auth.confirm_setup(data.get("setup_token", ""), data.get("code", "")):
+        auth.clear_fails(key)
         return JSONResponse({"ok": True})
+    auth.record_fail(key)
     return JSONResponse({"ok": False, "error": "Code falsch"}, status_code=400)
 
 
 @app.post("/auth/login")
-async def auth_login(data: dict = Body(...)) -> JSONResponse:
+async def auth_login(request: Request, data: dict = Body(...)) -> JSONResponse:
+    key = _client_key(request)
+    wait = auth.locked_for(key)
+    if wait:
+        return JSONResponse({"ok": False, "error": f"Zu viele Fehlversuche – gesperrt für {wait}s"},
+                            status_code=429)
     token = auth.login(data.get("password", ""), data.get("code", ""))
     if not token:
+        auth.record_fail(key)
         return JSONResponse({"ok": False, "error": "Passwort oder Code falsch"}, status_code=401)
+    auth.clear_fails(key)
     resp = JSONResponse({"ok": True})
     resp.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_TTL,
-                    httponly=True, samesite="lax")
+                    httponly=True, samesite="lax", secure=_is_https(request))
     return resp
 
 

@@ -44,7 +44,13 @@ def list_skills() -> list[dict]:
     return out
 
 
+_id_ok = re.compile(r"^[a-z0-9-]+$")
+
+
 def get_skill(skill_id: str) -> dict | None:
+    # Path-Traversal-Schutz: nur einfache Slug-IDs erlauben.
+    if not skill_id or not _id_ok.match(skill_id):
+        return None
     f = SKILLS_DIR / skill_id / "SKILL.md"
     if not f.is_file():
         return None

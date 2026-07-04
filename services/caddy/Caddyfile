@@ -9,11 +9,24 @@
 # (selbst-signiert) – einmal akzeptieren. Für eine echte Domain die
 # 'tls internal'-Zeile entfernen und einen Hostnamen eintragen.
 
+(secure_headers) {
+	header {
+		# Sicherheits-Header für alle Antworten
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
 :80 {
+	import secure_headers
 	reverse_proxy orchestrator:3000
 }
 
 :443 {
+	import secure_headers
+	header Strict-Transport-Security "max-age=31536000"
 	tls internal
 	reverse_proxy orchestrator:3000
 }

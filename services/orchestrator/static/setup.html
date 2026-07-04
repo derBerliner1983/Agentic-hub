@@ -41,6 +41,8 @@
       <input id="pw" type="password" autocomplete="new-password" />
       <label>Passwort wiederholen</label>
       <input id="pw2" type="password" autocomplete="new-password" />
+      <label>Setup-Token <span style="opacity:.6">(nur falls SETUP_TOKEN gesetzt)</span></label>
+      <input id="stoken" type="password" autocomplete="off" />
       <button id="next">Weiter → MFA einrichten</button>
     </div>
 
@@ -69,7 +71,8 @@
       if (pw.length < 8) return err("Passwort zu kurz (min. 8 Zeichen).");
       if (pw !== document.getElementById("pw2").value) return err("Passwörter stimmen nicht überein.");
       const r = await fetch("/auth/setup", { method:"POST",
-        headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ password: pw }) });
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ password: pw, setup_secret: document.getElementById("stoken").value }) });
       const j = await r.json();
       if (!j.ok) return err(j.error || "Fehler");
       setupToken = j.setup_token;
