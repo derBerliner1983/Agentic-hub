@@ -133,7 +133,17 @@
     if (msg.state === "pulling") {
       taskcard.hidden = false;
       taskTitle.textContent = "MODELL LADEN";
-      taskState.textContent = `lädt ${msg.model} …`;
+      taskState.textContent = `lädt ${msg.model} … ${msg.pct != null ? msg.pct + "%" : ""}`.trim();
+    } else if (msg.state === "ready") {
+      taskcard.hidden = false;
+      taskTitle.textContent = "MODELL BEREIT";
+      taskState.textContent = `✓ ${msg.model} – Gehirn baut sich auf`;
+      loadVitals();
+      setTimeout(() => { if (activeTasks === 0) taskcard.hidden = true; }, 3500);
+    } else if (msg.state === "error") {
+      taskcard.hidden = false;
+      taskTitle.textContent = "MODELL LADEN";
+      taskState.textContent = "Fehler: " + (msg.error || "");
     }
   }
 

@@ -274,6 +274,11 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 .chip { background: var(--sunken); border: 1px solid var(--border); color: var(--fg);
   font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: var(--r-pill); cursor: pointer; }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
+/* Download-Fortschritt (Modell-Pull) */
+.progress { height: 8px; background: var(--sunken); border: 1px solid var(--border);
+  border-radius: var(--r-pill); overflow: hidden; margin: 8px 0; }
+.progress > i { display: block; height: 100%; width: 0%; background: var(--accent);
+  border-radius: var(--r-pill); transition: width .3s ease; }
 .qrbox { background: #fff; padding: 10px; width: fit-content; border-radius: 10px; }
 .qrbox svg { width: 160px; height: 160px; display: block; }
 

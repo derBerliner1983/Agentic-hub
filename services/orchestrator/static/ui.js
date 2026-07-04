@@ -263,11 +263,12 @@
     let html = `<div class="ollama-only">
       <hr/><h4>Ollama-Modelle <span class="exec-badge ${reach ? "on" : ""}" style="margin-left:6px">${reach ? "ERREICHBAR" : "OFFLINE"}</span></h4>
       ${reach ? "" : '<div class="hint2">Ollama läuft nicht auf dem Host – siehe docs/INBETRIEBNAHME.md.</div>'}
-      <label>Modell laden (tippen oder Vorschlag wählen)</label>
-      <div class="row"><input id="pull-name" list="pullmodels" placeholder="z. B. llama3.1:8b · hf.co/…-GGUF" style="flex:1"/>
+      <label>Modell laden (ab 3 Buchstaben sucht er auf HuggingFace)</label>
+      <div class="row"><input id="pull-name" list="pullmodels" autocomplete="off" placeholder="z. B. llama3.1:8b · gemma · hf.co/…-GGUF" style="flex:1"/>
         <button class="btn" id="pull-go">⤓ Laden</button></div>
       <datalist id="pullmodels">${pullOpts}</datalist>
       <div class="chips">${SUGGEST.map((m) => `<button class="chip" data-model="${m}">${m}</button>`).join("")}</div>
+      <div class="progress" id="pull-progress" hidden><i></i></div>
       <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell geladen." : ""}</div>
       <div class="hint2">Auch <b>HuggingFace</b>: <code>hf.co/&lt;user&gt;/&lt;repo&gt;-GGUF</code></div>
       <div class="v-head" style="margin-top:12px">INSTALLIERTE MODELLE</div>
@@ -300,28 +301,65 @@
     bodyEl.insertAdjacentHTML("beforeend", html);
     if (window._vaultApplyProvVis) window._vaultApplyProvVis();   // Ollama-Only ggf. ausblenden
 
-    // Lade-Fortschritt live im Fenster zeigen
+    // Lade-Fortschritt live im Fenster zeigen (Balken + Text)
     if (window._vaultModelLog) window.removeEventListener("vault-log", window._vaultModelLog);
     window._vaultModelLog = (e) => {
       const m = e.detail || {};
       if (m.type !== "model") return;
       const msg = document.getElementById("pull-msg");
+      const bar = document.getElementById("pull-progress");
+      const barI = bar ? bar.querySelector("i") : null;
       if (!msg) return;
-      if (m.state === "pulling") msg.textContent = `Lädt ${m.model} … ${m.pct != null ? m.pct + "%" : ""} ${m.status || ""}`;
-      else if (m.state === "ready") { msg.textContent = `✓ ${m.model} geladen`; if (!root.hidden) setTimeout(openSettings, 800); }
-      else if (m.state === "error") msg.textContent = `✗ ${m.error || "Fehler"}`;
+      if (m.state === "pulling") {
+        if (bar) bar.hidden = false;
+        if (barI) barI.style.width = (m.pct != null ? m.pct : 0) + "%";
+        msg.textContent = `Lädt ${m.model} … ${m.pct != null ? m.pct + "%" : ""} ${m.status || ""}`.trim();
+      } else if (m.state === "ready") {
+        if (bar) bar.hidden = false;
+        if (barI) barI.style.width = "100%";
+        msg.textContent = `✓ ${m.model} geladen – Gehirn baut sich auf.`;
+        // Installierte-Modelle-Liste ohne Flackern nachladen
+        if (!root.hidden) setTimeout(openSettings, 1500);
+      } else if (m.state === "error") {
+        if (bar) bar.hidden = true;
+        msg.textContent = `✗ ${m.error || "Fehler"}`;
+      }
     };
     window.addEventListener("vault-log", window._vaultModelLog);
+
+    // Live-Suche auf HuggingFace, sobald ≥3 Zeichen getippt werden
+    const pullName = document.getElementById("pull-name");
+    const dl = document.getElementById("pullmodels");
+    const baseOpts = () => uniq([...SUGGEST, ...names]).map((m) => `<option value="${esc(m)}">`).join("");
+    if (pullName && dl) {
+      let searchTimer = null;
+      pullName.addEventListener("input", () => {
+        const q = pullName.value.trim();
+        if (q.length < 3 || q.startsWith("hf.co/")) { dl.innerHTML = baseOpts(); return; }
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+          const j = await fetch("/api/models/search?q=" + encodeURIComponent(q))
+            .then((r) => r.json()).catch(() => ({ results: [] }));
+          const hits = (j.results || []).map((r) =>
+            `<option value="${esc(r.pull)}">${esc(r.id)} · ${r.downloads.toLocaleString("de-DE")} Downloads</option>`).join("");
+          dl.innerHTML = baseOpts() + hits;
+        }, 300);
+      });
+    }
 
     const pullGo = document.getElementById("pull-go");
     if (pullGo) pullGo.onclick = async () => {
       const name = document.getElementById("pull-name").value.trim();
       if (!name) return;
+      const bar = document.getElementById("pull-progress");
+      const barI = bar ? bar.querySelector("i") : null;
+      if (bar) { bar.hidden = false; if (barI) barI.style.width = "0%"; }
       const j = await fetch("/api/models/pull", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }) }).then((r) => r.json()).catch(() => ({}));
       document.getElementById("pull-msg").textContent = j.ok
-        ? `Lade „${name}" … Fortschritt siehst du im Board-Live-Log. Danach ⚙ neu öffnen.`
+        ? `Lade „${name}" … Fortschritt läuft gleich hier.`
         : ("Fehler: " + (j.error || "?"));
+      if (!j.ok && bar) bar.hidden = true;
     };
     bodyEl.querySelectorAll("[data-model]").forEach((c) => { c.onclick = () => {
       document.getElementById("pull-name").value = c.dataset.model;

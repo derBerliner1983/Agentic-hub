@@ -32,7 +32,7 @@
       requestAnimationFrame(() => this._loop());
     }
 
-    setState(state) { if (RGB[state]) this.state = state; }
+    setState(state) { if (["offline", "idle", "working"].includes(state)) this.state = state; }
     setActiveDomain(domain) { this.activeDomain = domain || null; }
 
     _build(n) {

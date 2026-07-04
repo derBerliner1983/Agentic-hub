@@ -12,7 +12,9 @@ class OllamaProvider(Provider):
         self.base_url = base_url.rstrip("/")
 
     async def _models(self) -> list[str]:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        # Etwas großzügiger Timeout: der erste Request nach Container-Start
+        # (host.docker.internal-Auflösung) darf nicht sofort als „offline" gelten.
+        async with httpx.AsyncClient(timeout=6.0) as client:
             resp = await client.get(f"{self.base_url}/api/tags")
             resp.raise_for_status()
             return [m["name"] for m in resp.json().get("models", [])]

@@ -366,6 +366,11 @@ async def api_settings_save(request: Request, patch: dict = Body(...)) -> JSONRe
     settings_mod.update(patch)
     audit.log(getattr(request.state, "username", "-"), "settings_update",
               ",".join(k for k in patch if "key" not in k))
+    # Provider evtl. gewechselt/URL geändert → Status sofort neu senden (Gehirn folgt).
+    try:
+        await bus.publish(await _status_snapshot())
+    except Exception:  # noqa: BLE001
+        pass
     return JSONResponse(settings_mod.public())
 
 
@@ -376,6 +381,42 @@ async def api_models() -> JSONResponse:
                          "reachable": (await o.health())["reachable"]})
 
 
+@app.get("/api/models/search")
+async def api_models_search(q: str = "") -> JSONResponse:
+    """Live-Suche auf HuggingFace nach GGUF-Modellen (für die Modell-Eingabe)."""
+    q = (q or "").strip()
+    if len(q) < 3:
+        return JSONResponse({"results": []})
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            r = await client.get(
+                "https://huggingface.co/api/models",
+                params={"search": q, "filter": "gguf", "sort": "downloads",
+                        "direction": "-1", "limit": "20"},
+                headers={"User-Agent": "VAULT/1.0"})
+            r.raise_for_status()
+            data = r.json()
+    except Exception:  # noqa: BLE001 – offline/kein Netz → einfach leer
+        return JSONResponse({"results": []})
+    out = []
+    for m in data:
+        mid = m.get("id") or m.get("modelId")
+        if not mid:
+            continue
+        out.append({"id": mid, "pull": f"hf.co/{mid}", "downloads": m.get("downloads", 0)})
+    return JSONResponse({"results": out})
+
+
+async def _pull_and_refresh(name: str) -> None:
+    """Modell laden und danach sofort einen frischen Status senden → Gehirn baut sich auf."""
+    await settings_mod.ollama_provider().ensure_model(name, bus)
+    try:
+        await bus.publish(await _status_snapshot())
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @app.post("/api/models/pull")
 async def api_model_pull(request: Request, data: dict = Body(...)) -> JSONResponse:
     if not _require_admin(request):
@@ -384,7 +425,7 @@ async def api_model_pull(request: Request, data: dict = Body(...)) -> JSONRespon
     if not name:
         return JSONResponse({"ok": False, "error": "kein Modellname"}, status_code=400)
     audit.log(getattr(request.state, "username", "-"), "model_pull", name)
-    asyncio.create_task(settings_mod.ollama_provider().ensure_model(name, bus))
+    asyncio.create_task(_pull_and_refresh(name))
     return JSONResponse({"ok": True, "note": "Download läuft – Fortschritt im Live-Log."})
 
 
