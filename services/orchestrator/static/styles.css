@@ -1,6 +1,39 @@
 /* V.A.U.L.T. HUD – Design-System angelehnt an derBerliner1983/Docker-gui
  * Emerald-Akzent, Zinc-Neutrale, Inter, abgerundet, weiche Schatten. Dunkel-primär. */
 :root {
+  /* Hell (Standard) */
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --sunken: #f1f1f3;
+  --fg: #0b0b0f;
+  --muted: #52525b;
+  --subtle: #71717a;
+  --faint: #a1a1aa;
+
+  --accent: #10b981;          /* Emerald */
+  --accent-strong: #059669;
+  --accent-soft: rgba(16, 185, 129, 0.10);
+
+  --success: #10b981;
+  --warning: #d97706;
+  --error: #dc2626;
+  --info: #2563eb;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --hover: rgba(0, 0, 0, 0.04);
+
+  /* Gehirn-Bühne (Farbverlauf, folgt dem Theme) */
+  --stage-bg: radial-gradient(1100px 650px at 50% 32%, #ffffff, #e9ebef 72%);
+  --accent-ink: #05231a;      /* Text auf Emerald-Buttons */
+
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-pill: 999px;
+  --shadow: 0 1px 0 rgba(255,255,255,.5) inset, 0 1px 3px rgba(0,0,0,.06);
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
   --bg: #1c1c1f;
   --surface: #26262b;
   --sunken: #18181b;
@@ -9,7 +42,7 @@
   --subtle: #71717a;
   --faint: #52525b;
 
-  --accent: #34d399;          /* Emerald */
+  --accent: #34d399;
   --accent-strong: #6ee7b7;
   --accent-soft: rgba(52, 211, 153, 0.12);
 
@@ -22,10 +55,8 @@
   --border-strong: rgba(255, 255, 255, 0.13);
   --hover: rgba(255, 255, 255, 0.04);
 
-  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-pill: 999px;
+  --stage-bg: radial-gradient(1100px 650px at 50% 32%, #202024, #141417 72%);
   --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 2px 6px rgba(0,0,0,.3);
-  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -44,9 +75,13 @@ body {
 /* ── Topbar ─────────────────────────────── */
 .topbar {
   grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
-  gap: 18px; padding: 0 24px; height: 60px; border-bottom: 1px solid var(--border);
-  background: rgba(26,26,30,.7); backdrop-filter: blur(20px) saturate(160%);
+  gap: 14px; padding: 0 20px; min-height: 60px; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(20px) saturate(160%); flex-wrap: wrap;
 }
+.theme-toggle { width: 32px; height: 32px; border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted); cursor: pointer; font-size: 15px; flex-shrink: 0; }
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .brand { display: flex; flex-direction: column; }
 .brand-title { font-size: 17px; font-weight: 800; letter-spacing: .02em; }
 .brand-sub { font-size: 10.5px; color: var(--subtle); font-weight: 500; }
@@ -58,7 +93,7 @@ body {
   border: 1px solid var(--border); border-radius: var(--r-pill); }
 .viewswitch button { background: transparent; border: 0; color: var(--muted); font-family: var(--font);
   font-size: 11px; font-weight: 600; padding: 5px 14px; border-radius: var(--r-pill); cursor: pointer; }
-.viewswitch button.active { background: var(--accent); color: #05231a; }
+.viewswitch button.active { background: var(--accent); color: var(--accent-ink); }
 
 /* ── Left: Vitals ───────────────────────── */
 .vitals { border-right: 1px solid var(--border); padding: 20px 18px; overflow-y: auto;
@@ -83,15 +118,16 @@ body {
 .muted { color: var(--subtle); }
 
 /* ── Stage / Brain ──────────────────────── */
-.stage { position: relative; overflow: hidden; }
+.stage { position: relative; overflow: hidden; background: var(--stage-bg); }
 #brain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .hint { position: absolute; left: 50%; bottom: 78px; transform: translateX(-50%); text-align: center;
   font-size: 12.5px; color: var(--subtle); line-height: 1.7; transition: opacity .5s ease; max-width: 80%; }
 .hint code { color: var(--accent); font-family: var(--mono); background: var(--sunken);
   padding: 2px 6px; border-radius: 6px; font-size: 11.5px; }
 .taskcard { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); min-width: 260px;
-  max-width: 70%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: rgba(38,38,43,.86); backdrop-filter: blur(12px); box-shadow: var(--shadow); }
+  max-width: 70%; padding: 12px 16px; border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .taskcard-title { font-size: 12px; font-weight: 700; }
 .taskcard-state { font-size: 11.5px; color: var(--accent); margin-top: 3px; }
 
@@ -100,7 +136,7 @@ body {
 .project-bar input { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--fg);
   font-family: var(--font); font-size: 12.5px; padding: 10px 14px; border-radius: var(--r-pill); }
 .project-bar input:focus { outline: none; border-color: var(--accent); }
-.project-bar button { background: var(--accent); border: 0; color: #05231a; font-family: var(--font);
+.project-bar button { background: var(--accent); border: 0; color: var(--accent-ink); font-family: var(--font);
   font-size: 12px; font-weight: 600; padding: 0 18px; border-radius: var(--r-pill); cursor: pointer; }
 .project-bar button:hover { background: var(--accent-strong); }
 .project-bar button:disabled { opacity: .45; cursor: wait; }
@@ -222,8 +258,8 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
   border-radius: var(--r-pill); cursor: pointer; transition: all .1s; text-decoration: none; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn:active { transform: scale(.97); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #05231a; margin-top: 14px; font-weight: 600; }
-.btn.primary:hover { background: var(--accent-strong); color: #05231a; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); margin-top: 14px; font-weight: 600; }
+.btn.primary:hover { background: var(--accent-strong); color: var(--accent-ink); }
 .steps { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
 .step-chip { font-size: 11.5px; background: var(--sunken); border: 1px solid var(--border); padding: 7px 10px;
   border-radius: var(--r-sm); display: flex; justify-content: space-between; align-items: center; }
@@ -236,10 +272,40 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 .mrow { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px;
   padding: 5px 0; border-bottom: 1px solid var(--border); }
 
+/* Sprech-Button (Touch/Mobil – Space gibt es dort nicht) */
+.mic-btn { display: none; margin-top: 10px; width: 100%; padding: 12px; border-radius: var(--r-pill);
+  border: 0; background: var(--accent); color: var(--accent-ink); font-family: var(--font);
+  font-size: 13px; font-weight: 600; cursor: pointer; touch-action: none; user-select: none; }
+.mic-btn.rec { background: var(--info); }
+
+/* ── Responsive: Tablet ─────────────────── */
 @media (max-width: 1100px) {
-  #app { grid-template-columns: 1fr; grid-template-rows: auto auto 46vh auto; }
+  #app { grid-template-columns: 1fr; grid-template-rows: auto auto 44vh auto; }
   .vitals { border-right: 0; border-bottom: 1px solid var(--border); }
   .deck { border-left: 0; border-top: 1px solid var(--border); }
   .stage { min-height: 40vh; }
+  .b-cols { grid-template-columns: 1fr; }
 }
-@media (max-width: 700px) { .b-cols { grid-template-columns: 1fr; } }
+
+/* ── Responsive: Handy ──────────────────── */
+@media (max-width: 640px) {
+  html { font-size: 13px; }
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .brand-sub { display: none; }
+  .statusline { order: 3; width: 100%; justify-content: space-between; gap: 8px; font-size: 10px; }
+  .clock { font-size: 13px; }
+  .viewswitch button { padding: 5px 12px; }
+  #app { grid-template-rows: auto auto 38vh auto; }
+  .vitals, .deck { padding: 16px 14px; }
+  .deck-grid { grid-template-columns: 1fr 1fr; }
+  .project-bar { width: 92%; }
+  .project-bar input { font-size: 16px; }        /* iOS zoomt sonst */
+  .taskcard { max-width: 92%; }
+  .mic-btn { display: block; }
+  /* Board: Spalten horizontal wischen statt quetschen */
+  .board-cols { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 10px; }
+  .col { min-width: 78%; scroll-snap-align: start; }
+  .modal { width: 96vw; max-height: 92vh; }
+  .b-cols { grid-template-columns: 1fr; }
+  .modal-body input, .modal-body select, .modal-body textarea { font-size: 16px; }
+}

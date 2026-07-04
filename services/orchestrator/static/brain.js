@@ -7,12 +7,12 @@
  * läuft ein Task einer Domäne, leuchtet nur DIESES Segment auf.
  */
 (function () {
-  const RGB = {
-    offline: "82,82,91",       // Zinc – dezent
-    idle:    "52,211,153",     // Emerald (Akzent)
-    working: "96,165,250",     // Info-Blau
-    scan:    "251,191,36",     // Amber
+  // Palette je Theme (heller Hintergrund braucht kräftigere Farben + mehr Deckkraft)
+  const PALETTE = {
+    dark:  { offline: "82,82,91",    idle: "52,211,153",  working: "96,165,250", scan: "251,191,36", aMul: 1.0, coreMul: 1.0 },
+    light: { offline: "148,148,158", idle: "5,150,105",   working: "37,99,235",  scan: "217,119,6",  aMul: 1.5, coreMul: 0.45 },
   };
+  const theme = () => (document.documentElement.dataset.theme === "light" ? "light" : "dark");
   // Domänen im Uhrzeigersinn -> Winkelsektoren
   const DOMAINS = ["inbox", "research", "content", "ops"];
 
@@ -60,18 +60,19 @@
       this.scale = Math.min(w, h) * 0.42;
     }
 
-    // Farbe + Intensität eines Knotens abhängig von Zustand/Domäne
-    _nodeStyle(node, base) {
-      if (this.state !== "working") return { rgb: RGB[this.state], boost: 1 };
-      // Working: aktives Segment leuchtet magenta, Rest bleibt schwach gold
+    // Farbe + Intensität eines Knotens abhängig von Zustand/Domäne/Theme
+    _nodeStyle(node) {
+      const pal = this.pal;
+      if (this.state !== "working") return { rgb: pal[this.state], mul: pal.aMul, active: false };
       if (this.activeDomain && node.domain !== this.activeDomain) {
-        return { rgb: RGB.idle, boost: 0.28 };
+        return { rgb: pal.idle, mul: 0.28 * pal.aMul, active: false };
       }
-      return { rgb: RGB.working, boost: 1 };
+      return { rgb: pal.working, mul: pal.aMul, active: true };
     }
 
     _loop() {
       const dt = 0.016;
+      this.pal = PALETTE[theme()];
       this.t += dt;
       const target = this.state === "offline" ? 0 : 1;
       this.boot += (target - this.boot) * 0.045;
@@ -106,12 +107,12 @@
           const d2 = dx * dx + dy * dy;
           if (d2 > maxD * maxD) continue;
           const s = this._nodeStyle(pts[i].node);
-          let a = (1 - Math.sqrt(d2) / maxD) * 0.32 * this.boot * s.boost;
-          if (this.state === "working" && s.boost === 1) {
+          let a = (1 - Math.sqrt(d2) / maxD) * 0.32 * this.boot * s.mul;
+          if (this.state === "working" && s.active) {
             const wave = Math.sin(this.pulse * 3 - pts[i].r * 6);
             a *= 0.6 + 0.6 * Math.max(0, wave);
           }
-          ctx.strokeStyle = `rgba(${s.rgb},${a})`;
+          ctx.strokeStyle = `rgba(${s.rgb},${Math.min(1, a)})`;
           ctx.beginPath();
           ctx.moveTo(pts[i].x, pts[i].y);
           ctx.lineTo(pts[j].x, pts[j].y);
@@ -125,8 +126,8 @@
         const s = this._nodeStyle(p.node);
         const glow = 0.5 + 0.5 * Math.sin(this.t * 1.4 + i);
         let size = 1.3 + (1 - p.r) * 1.8;
-        let alpha = (0.5 + glow * 0.5) * this.boot * s.boost;
-        if (this.state === "working" && s.boost === 1) {
+        let alpha = (0.5 + glow * 0.5) * this.boot * s.mul;
+        if (this.state === "working" && s.active) {
           const wave = Math.sin(this.pulse * 3 - p.r * 6);
           alpha *= 0.6 + 0.7 * Math.max(0, wave);
           size *= 1 + 0.4 * Math.max(0, wave);
@@ -139,8 +140,8 @@
 
       // Kern-Schein
       if (this.boot > 0.02) {
-        const rgb = this.state === "working" ? RGB.working : RGB[this.state];
-        const core = this.state === "working" ? 0.14 : 0.08;
+        const rgb = this.state === "working" ? this.pal.working : this.pal[this.state];
+        const core = (this.state === "working" ? 0.14 : 0.08) * this.pal.coreMul;
         const g = ctx.createRadialGradient(this.cx, this.cy, 0, this.cx, this.cy, this.scale * 0.9);
         g.addColorStop(0, `rgba(${rgb},${core * this.boot})`);
         g.addColorStop(1, "rgba(0,0,0,0)");

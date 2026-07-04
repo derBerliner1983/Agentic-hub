@@ -4,6 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>V.A.U.L.T.</title>
+  <script>
+    // Theme früh setzen (kein Flackern): gespeicherte Wahl, sonst System.
+    (function () {
+      var t = localStorage.getItem("vault-theme");
+      if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -23,6 +31,7 @@
         <button data-view="brain" class="active">GEHIRN</button>
         <button data-view="board">BOARD</button>
       </div>
+      <button class="theme-toggle" id="theme-toggle" title="Hell/Dunkel">☀</button>
       <div class="clock" id="clock">--:--</div>
     </header>
 
@@ -74,6 +83,7 @@
         <div class="audio-bars" id="audio-bars"></div>
         <div class="voice-text" id="voice-text"></div>
         <div class="audio-note" id="audio-note">VOICE LINK · Space halten zum Sprechen · ESC stopp</div>
+        <button class="mic-btn" id="mic-btn">🎤 Gedrückt halten zum Sprechen</button>
       </div>
     </aside>
   </div>

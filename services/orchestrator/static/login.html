@@ -4,10 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>V.A.U.L.T. · Login</title>
+  <script>(function(){var t=localStorage.getItem("vault-theme");
+    if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+    document.documentElement.setAttribute("data-theme",t);})();</script>
   <style>
-    :root { --bg:#1c1c1f; --surface:#26262b; --sunken:#18181b; --fg:#f4f4f5; --muted:#a1a1aa;
-            --accent:#34d399; --line:rgba(255,255,255,.08);
+    :root { --bg:#f7f7f8; --surface:#fff; --sunken:#f1f1f3; --fg:#0b0b0f; --muted:#52525b;
+            --accent:#10b981; --line:rgba(0,0,0,.08);
             --font:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
+    :root[data-theme="dark"] { --bg:#1c1c1f; --surface:#26262b; --sunken:#18181b; --fg:#f4f4f5;
+            --muted:#a1a1aa; --accent:#34d399; --line:rgba(255,255,255,.08); }
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; display:grid; place-items:center;
       background:var(--bg); color:var(--fg); font-family:var(--font); }

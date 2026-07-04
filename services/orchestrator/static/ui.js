@@ -265,12 +265,12 @@
         ? `Lade „${name}" … Fortschritt siehst du im Board-Live-Log. Danach ⚙ neu öffnen.`
         : ("Fehler: " + (j.error || "?"));
     };
-    bodyEl.querySelectorAll("[data-delmodel]").forEach((b) => b.onclick = async () => {
+    bodyEl.querySelectorAll("[data-delmodel]").forEach((b) => { b.onclick = async () => {
       if (!confirm(`Modell ${b.dataset.delmodel} löschen?`)) return;
       await fetch("/api/models/delete", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: b.dataset.delmodel }) });
       openSettings();
-    };
+    }; });
 
     document.getElementById("ag-save").onclick = async () => {
       for (const inp of bodyEl.querySelectorAll(".ag-model")) {
@@ -351,4 +351,17 @@
   document.getElementById("btn-settings").addEventListener("click", openSettings);
   document.getElementById("btn-update").addEventListener("click", doUpdate);
   initProject();
+
+  // Hell/Dunkel-Umschalter
+  const tt = document.getElementById("theme-toggle");
+  if (tt) {
+    const upd = () => (tt.textContent = document.documentElement.dataset.theme === "light" ? "☾" : "☀");
+    upd();
+    tt.onclick = () => {
+      const nx = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = nx;
+      localStorage.setItem("vault-theme", nx);
+      upd();
+    };
+  }
 })();

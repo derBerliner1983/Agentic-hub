@@ -119,6 +119,18 @@
   window.addEventListener("keyup", (e) => {
     if (e.code === "Space" && !isTyping(e)) { e.preventDefault(); stopRecording(false); }
   });
+
+  // Mikro-Button (Touch/Mobil): gedrückt halten zum Sprechen
+  const micBtn = document.getElementById("mic-btn");
+  if (micBtn) {
+    micBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); micBtn.classList.add("rec"); startRecording();
+    });
+    const end = () => { micBtn.classList.remove("rec"); stopRecording(false); };
+    micBtn.addEventListener("pointerup", end);
+    micBtn.addEventListener("pointerleave", end);
+    micBtn.addEventListener("pointercancel", end);
+  }
   function isTyping(e) {
     const t = e.target;
     return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
