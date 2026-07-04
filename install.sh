@@ -169,8 +169,9 @@ else
   cat > "$CONFIG" <<EOF
 # V.A.U.L.T. Instanz-Konfiguration – wird von Git-Updates NICHT überschrieben.
 MODE=$MODE
-HTTP_PORT=3000
-HTTPS_PORT=3443
+# Standard-Ports: HTTP 80 leitet auf HTTPS 443 um. Bei Konflikt ändern (z. B. 8080/8443).
+HTTP_PORT=80
+HTTPS_PORT=443
 BIND_ADDR=0.0.0.0
 HARDEN=$HARDEN
 INSTALLED_AT=$(date -Iseconds)
@@ -179,7 +180,8 @@ EOF
 fi
 # shellcheck disable=SC1090
 source "$CONFIG"
-HTTPS_PORT="${HTTPS_PORT:-3443}"
+HTTP_PORT="${HTTP_PORT:-80}"
+HTTPS_PORT="${HTTPS_PORT:-443}"
 
 # ---------------------------------------------------------------------------
 # 5) App-Container starten (sobald docker-compose.yml existiert)
@@ -206,7 +208,7 @@ bash "$REPO_DIR/scripts/setup-obsidian.sh" "$MODE" "$REPO_DIR/vault" || warn "Ob
 # ---------------------------------------------------------------------------
 if [[ "$MODE" == "both" || "$MODE" == "kiosk" ]]; then
   say "Kiosk"
-  bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT}" || warn "Kiosk-Setup übersprungen."
+  bash "$REPO_DIR/scripts/setup-kiosk.sh" "https://localhost" || warn "Kiosk-Setup übersprungen."
   say "Boot-Splash"
   bash "$REPO_DIR/scripts/setup-splash.sh" || warn "Splash-Setup übersprungen."
 fi
@@ -225,7 +227,8 @@ fi
 # ---------------------------------------------------------------------------
 say "Fertig"
 ok "Modus: $MODE"
-info "HUD (sobald App läuft):  http://<server-ip>:${HTTP_PORT}"
+info "HUD öffnen:  http://<server-ip>   → leitet automatisch auf HTTPS um"
+info "(Zertifikatswarnung 1× akzeptieren – selbst-signiert)"
 info "Aktualisieren jederzeit mit:  ./update.sh"
 if have docker && ! groups "${USER:-$(id -un)}" 2>/dev/null | grep -q docker; then
   warn "Hinweis: einmal ab-/anmelden, damit 'docker' ohne sudo funktioniert."

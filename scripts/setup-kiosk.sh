@@ -64,6 +64,7 @@ ExecStartPre=/bin/sh -c 'until curl -ksf $URL >/dev/null; do sleep 2; done'
 ExecStart=/usr/bin/cage -s -- $CHROME \\
   --kiosk --incognito --noerrdialogs --disable-infobars \\
   --disable-session-crashed-bubble --check-for-update-interval=31536000 \\
+  --ignore-certificate-errors --test-type \\
   --autoplay-policy=no-user-gesture-required --app=$URL
 Restart=always
 RestartSec=3

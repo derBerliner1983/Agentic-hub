@@ -86,6 +86,10 @@ async def security_headers(request: Request, call_next):
     resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
     resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    # HTML/CSS/JS immer revalidieren, damit neue Versionen nach Update sofort greifen
+    p = request.url.path
+    if request.method == "GET" and not p.startswith("/api") and not p.startswith("/ws"):
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
 

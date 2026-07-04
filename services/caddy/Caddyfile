@@ -1,32 +1,31 @@
 # V.A.U.L.T. Reverse-Proxy
 #
-# Port 80  → HUD über HTTP (LAN)
-# Port 443 → HUD über HTTPS mit intern signiertem Zertifikat.
-#            Nötig, damit der Browser das Mikrofon freigibt (secure context),
-#            wenn du vom Laptop/Tablet per IP zugreifst.
-#
-# Beim ersten HTTPS-Aufruf zeigt der Browser eine Zertifikatswarnung
-# (selbst-signiert) – einmal akzeptieren. Für eine echte Domain die
-# 'tls internal'-Zeile entfernen und einen Hostnamen eintragen.
+# Port 80  → leitet automatisch auf HTTPS um.
+# Port 443 → HUD über HTTPS mit intern signiertem Zertifikat (tls internal).
+#            Beim ersten Aufruf zeigt der Browser eine Zertifikatswarnung
+#            (selbst-signiert) – einmal „trotzdem fortfahren" klicken.
+#            Für eine echte Domain die 'tls internal'-Zeile entfernen und
+#            einen Hostnamen statt 'https://' eintragen.
 
-(secure_headers) {
+{
+	# Wir definieren die HTTP→HTTPS-Weiterleitung selbst.
+	auto_https disable_redirects
+}
+
+# Alles auf HTTP → dauerhaft auf HTTPS umleiten (gleicher Host).
+http:// {
+	redir https://{host}{uri} permanent
+}
+
+# HTTPS
+https:// {
+	tls internal
+	reverse_proxy orchestrator:3000
 	header {
-		# Sicherheits-Header für alle Antworten
+		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "no-referrer"
 		-Server
 	}
-}
-
-:80 {
-	import secure_headers
-	reverse_proxy orchestrator:3000
-}
-
-:443 {
-	import secure_headers
-	header Strict-Transport-Security "max-age=31536000"
-	tls internal
-	reverse_proxy orchestrator:3000
 }

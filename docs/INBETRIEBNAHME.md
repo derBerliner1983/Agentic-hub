@@ -95,9 +95,15 @@ ollama pull qwen2.5-coder     # für den Coder-Agenten / Code-Projekte
 ---
 
 ## 4. HUD öffnen & Login einrichten
-Im Browser vom Laptop/Tablet:
-- **Mit Mikro/Voice:** `https://<server-ip>:3443`  (Zertifikatswarnung 1× akzeptieren)
-- Ohne Voice:        `http://<server-ip>:3000`
+Im Browser vom Laptop/Tablet einfach die **IP** öffnen:
+- `http://<server-ip>` → leitet **automatisch auf HTTPS** um.
+- Beim ersten Mal zeigt der Browser eine **Zertifikatswarnung** (selbst-signiert):
+  „Erweitert" → „trotzdem fortfahren". Danach läuft alles über HTTPS (Mikro/Voice ok).
+
+> Bei krummen Ports (falls 80/443 belegt sind) stehen sie in `instance/config.env`
+> (`HTTP_PORT`/`HTTPS_PORT`). Nach dem Ändern: `./update.sh`.
+> **Design nach Update nicht aktualisiert?** Einmal hart neu laden: `Strg+Shift+R`
+> (bzw. auf dem Mac `Cmd+Shift+R`).
 
 Beim ersten Aufruf: **/setup** → Admin-Benutzername + Passwort + **MFA** (QR-Code mit
 einer Authenticator-App scannen, z. B. Aegis/2FAS/Google Authenticator).

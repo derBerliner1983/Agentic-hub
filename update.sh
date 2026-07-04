@@ -52,8 +52,11 @@ echo "  ✓ Code auf origin/$BRANCH aktualisiert."
 # App neu bauen/starten
 if [[ "$NO_BUILD" -eq 0 ]]; then
   if [[ -f "$COMPOSE" ]] && command -v docker >/dev/null 2>&1; then
-    ( cd "$REPO_DIR" && HTTP_PORT="${HTTP_PORT:-3000}" HTTPS_PORT="${HTTPS_PORT:-3443}" \
+    ( cd "$REPO_DIR" && HTTP_PORT="${HTTP_PORT:-80}" HTTPS_PORT="${HTTPS_PORT:-443}" \
         BIND_ADDR="${BIND_ADDR:-0.0.0.0}" docker compose up -d --build )
+    # Caddy neu erstellen, damit ein geänderter Caddyfile wirklich greift
+    ( cd "$REPO_DIR" && HTTP_PORT="${HTTP_PORT:-80}" HTTPS_PORT="${HTTPS_PORT:-443}" \
+        BIND_ADDR="${BIND_ADDR:-0.0.0.0}" docker compose up -d --force-recreate caddy )
     echo "  ✓ Container neu gebaut & rollend neu gestartet (Live-Update)."
   else
     echo "  • Kein docker-compose.yml / Docker – App-Neustart übersprungen."
