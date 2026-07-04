@@ -189,8 +189,12 @@ HTTP_PORT="${HTTP_PORT:-80}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
 
 # ---------------------------------------------------------------------------
-# 5) App-Container starten (sobald docker-compose.yml existiert)
+# 5) TLS-Zertifikat + App-Container starten
 # ---------------------------------------------------------------------------
+say "TLS-Zertifikat"
+[[ "$PKG" == "apt" ]] && { have openssl || $SUDO apt-get install -y openssl >/dev/null 2>&1; }
+bash "$REPO_DIR/scripts/gen-cert.sh" || warn "Zertifikat-Setup übersprungen."
+
 say "App-Dienste"
 if [[ -f "$COMPOSE" ]] && have docker; then
   info "Baue Image (inkl. Voice: faster-whisper + Piper – erster Build lädt Modelle, dauert etwas)…"

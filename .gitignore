@@ -34,3 +34,6 @@ backups/
 instance/audit.log
 instance/auth.log
 instance/schedule.json
+
+# Selbst-signierte TLS-Zertifikate (lokal erzeugt)
+services/caddy/certs/

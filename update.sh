@@ -49,6 +49,9 @@ git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
 
 echo "  ✓ Code auf origin/$BRANCH aktualisiert."
 
+# TLS-Zertifikat sicherstellen (erzeugt es, falls es fehlt)
+bash "$REPO_DIR/scripts/gen-cert.sh" || true
+
 # App neu bauen/starten
 if [[ "$NO_BUILD" -eq 0 ]]; then
   if [[ -f "$COMPOSE" ]] && command -v docker >/dev/null 2>&1; then

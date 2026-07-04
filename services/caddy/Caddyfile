@@ -1,16 +1,13 @@
 # V.A.U.L.T. Reverse-Proxy
 #
 # Port 80  → leitet auf HTTPS um.
-# Port 443 → HUD über HTTPS mit intern signiertem Zertifikat.
-#            Beim ersten Aufruf: Zertifikatswarnung „Erweitert → trotzdem fortfahren".
-#
-# WICHTIG: KEIN HSTS! Bei einer LAN-IP mit selbst-signiertem Zertifikat würde HSTS
-# den Browser zwingen, HTTPS auch auf dem HTTP-Port zu erzwingen (→ SSL-Fehler)
-# und die Zertifikatswarnung nicht mehr wegklickbar machen.
+# Port 443 → HUD über HTTPS mit einem selbst-signierten Zertifikat, das die
+#            richtigen Namen enthält (*.local, localhost, LAN-IP) – erzeugt von
+#            scripts/gen-cert.sh. Dadurch KEIN Namens-Mismatch; die Browser-
+#            Warnung ist normal wegklickbar. KEIN HSTS (LAN-IP-Falle).
 
 {
 	auto_https disable_redirects
-	local_certs
 	servers {
 		protocols h1 h2
 	}
@@ -21,6 +18,7 @@
 }
 
 :443 {
+	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy orchestrator:3000
 	header {
 		X-Content-Type-Options "nosniff"
