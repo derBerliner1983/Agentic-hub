@@ -50,7 +50,10 @@
       <input id="pw2" type="password" autocomplete="new-password" />
       <label>Setup-Token <span style="opacity:.6">(nur falls SETUP_TOKEN gesetzt)</span></label>
       <input id="stoken" type="password" autocomplete="off" />
-      <button id="next">Weiter → MFA einrichten</button>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
+        <input type="checkbox" id="usemfa" checked style="width:auto" />
+        <span>Zwei-Faktor (MFA) mit Authenticator-App aktivieren (empfohlen)</span></label>
+      <button id="next">Weiter</button>
     </div>
 
     <div id="step2">
@@ -77,12 +80,14 @@
       const pw = document.getElementById("pw").value;
       if (pw.length < 8) return err("Passwort zu kurz (min. 8 Zeichen).");
       if (pw !== document.getElementById("pw2").value) return err("Passwörter stimmen nicht überein.");
+      const enableMfa = document.getElementById("usemfa").checked;
       const r = await fetch("/auth/setup", { method:"POST",
         headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ username: document.getElementById("user").value, password: pw,
-          setup_secret: document.getElementById("stoken").value }) });
+          enable_mfa: enableMfa, setup_secret: document.getElementById("stoken").value }) });
       const j = await r.json();
       if (!j.ok) return err(j.error || "Fehler");
+      if (j.done) { location.href = "/login"; return; }   // ohne MFA fertig
       setupToken = j.setup_token;
       document.getElementById("qr").innerHTML = j.qr_svg ||
         "<div style='color:#000;font-size:11px;max-width:180px'>QR nicht verfügbar – Secret manuell eintragen.</div>";

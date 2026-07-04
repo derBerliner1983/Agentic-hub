@@ -40,28 +40,43 @@
       <input id="user" autocomplete="username" value="admin" />
       <label>Passwort</label>
       <input id="pw" type="password" autocomplete="current-password" />
-      <label>MFA-Code (Authenticator-App)</label>
-      <input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
-      <button type="submit">ANMELDEN</button>
+      <div id="mfa-step" style="display:none">
+        <label>MFA-Code (Authenticator-App)</label>
+        <input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+      </div>
+      <button type="submit" id="submit">ANMELDEN</button>
     </form>
     <div class="err" id="err"></div>
   </div>
 
   <script>
-    document.getElementById("f").onsubmit = async (e) => {
+    const f = document.getElementById("f");
+    const err = document.getElementById("err");
+    const mfaStep = document.getElementById("mfa-step");
+    const submitBtn = document.getElementById("submit");
+    let mfaMode = false;
+
+    f.onsubmit = async (e) => {
       e.preventDefault();
-      const err = document.getElementById("err");
       err.textContent = "";
-      const r = await fetch("/auth/login", { method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({
-          username: document.getElementById("user").value,
-          password: document.getElementById("pw").value,
-          code: document.getElementById("code").value,
-        }) });
+      const body = {
+        username: document.getElementById("user").value,
+        password: document.getElementById("pw").value,
+      };
+      if (mfaMode) body.code = document.getElementById("code").value;
+      const r = await fetch("/auth/login", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
-      if (j.ok) location.href = "/";
-      else err.textContent = j.error || "Login fehlgeschlagen.";
+      if (j.ok) { location.href = "/"; return; }
+      if (j.mfa_required) {
+        // Erst jetzt das MFA-Feld einblenden
+        mfaMode = true;
+        mfaStep.style.display = "block";
+        submitBtn.textContent = "BESTÄTIGEN";
+        document.getElementById("code").focus();
+        return;
+      }
+      err.textContent = j.error || "Login fehlgeschlagen.";
     };
   </script>
 </body>

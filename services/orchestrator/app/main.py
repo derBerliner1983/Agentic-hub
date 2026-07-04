@@ -157,8 +157,8 @@ async def auth_setup(request: Request, data: dict = Body(...)) -> JSONResponse:
     pw = data.get("password") or ""
     if len(pw) < 8:
         return JSONResponse({"ok": False, "error": "Passwort min. 8 Zeichen"}, status_code=400)
-    res = auth.start_setup(data.get("username", "admin"), pw)
-    if not res:
+    res = auth.start_setup(data.get("username", "admin"), pw, bool(data.get("enable_mfa")))
+    if res is None:
         return JSONResponse({"ok": False, "error": "Ungültiger Benutzername (a-z0-9_-, 2-32)"}, status_code=400)
     return JSONResponse({"ok": True, **res})
 
@@ -183,18 +183,70 @@ async def auth_login(request: Request, data: dict = Body(...)) -> JSONResponse:
     if wait:
         return JSONResponse({"ok": False, "error": f"Zu viele Fehlversuche – gesperrt für {wait}s"},
                             status_code=429)
-    username = data.get("username", "")
-    token = auth.login(username, data.get("password", ""), data.get("code", ""))
-    if not token:
+    username = (data.get("username", "") or "").strip().lower()
+    if not auth.check_password(username, data.get("password", "")):
         auth.record_fail(key)
         audit.auth_fail(key, username)
-        return JSONResponse({"ok": False, "error": "Benutzer, Passwort oder Code falsch"}, status_code=401)
+        return JSONResponse({"ok": False, "error": "Benutzer oder Passwort falsch"}, status_code=401)
+
+    # MFA nur, wenn der Benutzer sie aktiviert hat UND das Gerät nicht gemerkt ist
+    if auth.mfa_enabled(username):
+        dev = request.cookies.get(auth.DEVICE_COOKIE)
+        if not auth.verify_device(dev, username):
+            code = data.get("code", "")
+            if not code:
+                return JSONResponse({"ok": False, "mfa_required": True})   # Schritt 2 nötig
+            if not auth.verify_code(username, code):
+                auth.record_fail(key)
+                audit.auth_fail(key, username)
+                return JSONResponse({"ok": False, "error": "MFA-Code falsch"}, status_code=401)
+
     auth.clear_fails(key)
     audit.log(username, "login")
+    secure = _is_https(request)
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_TTL,
-                    httponly=True, samesite="lax", secure=_is_https(request))
+    resp.set_cookie(auth.COOKIE, auth.create_session(username), max_age=auth.SESSION_TTL,
+                    httponly=True, samesite="lax", secure=secure)
+    # Gerät merken → beim nächsten Mal kein MFA-Code nötig
+    resp.set_cookie(auth.DEVICE_COOKIE, auth.create_device(username), max_age=auth.DEVICE_TTL,
+                    httponly=True, samesite="lax", secure=secure)
     return resp
+
+
+# ---- MFA nachträglich aktivieren/deaktivieren (eigener Account) ------------
+@app.post("/api/mfa/enable")
+async def api_mfa_enable(request: Request) -> JSONResponse:
+    user = getattr(request.state, "username", None)
+    res = auth.begin_enable_mfa(user) if user else None
+    return JSONResponse(res or {"error": "nicht möglich"}, status_code=200 if res else 400)
+
+
+@app.post("/api/mfa/enable/verify")
+async def api_mfa_enable_verify(request: Request, data: dict = Body(...)) -> JSONResponse:
+    user = getattr(request.state, "username", None)
+    ok = auth.confirm_enable_mfa(user, data.get("code", "")) if user else False
+    if ok:
+        audit.log(user, "mfa_enabled")
+    return JSONResponse({"ok": ok}, status_code=200 if ok else 400)
+
+
+@app.post("/api/mfa/disable")
+async def api_mfa_disable(request: Request) -> JSONResponse:
+    user = getattr(request.state, "username", None)
+    ok = auth.disable_mfa(user) if user else False
+    if ok:
+        audit.log(user, "mfa_disabled")
+    return JSONResponse({"ok": ok})
+
+
+# ---- Ollama-Erreichbarkeit testen -----------------------------------------
+@app.post("/api/ollama/test")
+async def api_ollama_test(data: dict = Body(...)) -> JSONResponse:
+    from .providers.ollama import OllamaProvider
+    url = (data.get("url") or "").strip() or settings_mod.get()["ollama_url"]
+    health = await OllamaProvider(url).health()
+    return JSONResponse({"reachable": health["reachable"], "models": health["models"],
+                         "error": health.get("error")})
 
 
 @app.post("/auth/logout")
@@ -206,8 +258,9 @@ async def auth_logout() -> JSONResponse:
 
 @app.get("/api/me")
 async def api_me(request: Request) -> JSONResponse:
-    return JSONResponse({"username": getattr(request.state, "username", None),
-                         "role": getattr(request.state, "role", "user")})
+    user = getattr(request.state, "username", None)
+    return JSONResponse({"username": user, "role": getattr(request.state, "role", "user"),
+                         "mfa": auth.mfa_enabled(user) if user else False})
 
 
 @app.get("/api/users")

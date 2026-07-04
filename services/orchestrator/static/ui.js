@@ -128,7 +128,12 @@
           <option value="anthropic" ${sel("anthropic")}>Claude (Anthropic)</option>
           <option value="openai" ${sel("openai")}>OpenAI (ChatGPT)</option>
         </select></label>
-      <label>Ollama-URL <input id="p-ollama" value="${esc(s.ollama_url)}"/></label>
+      <label>Ollama-URL</label>
+      <div class="row" style="align-items:center">
+        <input id="p-ollama" value="${esc(s.ollama_url)}" style="flex:1"/>
+        <button class="btn" id="p-test" type="button">Testen</button>
+      </div>
+      <div class="hint2" id="p-test-msg"></div>
       <hr/>
       <label>Anthropic API-Key ${s.anthropic_key_set ? "✓ gesetzt" : ""}
         <input id="p-akey" type="password" placeholder="${s.anthropic_key_set ? "•••• (leer = behalten)" : "sk-ant-…"}"/></label>
@@ -200,6 +205,18 @@
       close();
     };
 
+    document.getElementById("p-test").onclick = async () => {
+      const msg = document.getElementById("p-test-msg");
+      msg.textContent = "teste …";
+      const j = await fetch("/api/ollama/test", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: document.getElementById("p-ollama").value }) })
+        .then((r) => r.json()).catch(() => ({}));
+      msg.textContent = j.reachable
+        ? `✓ erreichbar · ${(j.models || []).length} Modell(e)`
+        : `✗ nicht erreichbar${j.error ? " – " + j.error : ""}`;
+    };
+
     await appendModelsAndUsers();
   }
 
@@ -226,12 +243,26 @@
         <code>curl -fsSL https://ollama.com/install.sh | sh</code>, dann Dienst auf
         0.0.0.0 binden (siehe docs/INBETRIEBNAHME.md).</div>`;
     }
+    const SUGGEST = ["llama3.1:8b", "qwen2.5-coder:7b", "qwen2.5:7b", "llama3.2:3b",
+                     "mistral", "phi3", "gemma2:9b"];
+    const noModels = !(models.available || []).length;
     html += `<div class="row" style="margin-top:6px">
-        <input id="pull-name" placeholder="llama3.1 · qwen2.5-coder · …" style="flex:1"/>
+        <input id="pull-name" placeholder="llama3.1 · qwen2.5-coder · hf.co/…" style="flex:1"/>
         <button class="btn" id="pull-go">⤓ Modell laden</button></div>
-      <div class="hint2" id="pull-msg"></div>
+      <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell – wähle unten eins:" : ""}</div>
+      <div class="chips">${SUGGEST.map((m) =>
+        `<button class="chip" data-model="${m}">${m}</button>`).join("")}</div>
+      <div class="hint2">Auch von <b>HuggingFace</b> ladbar – gib z. B.
+        <code>hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF</code> ins Feld ein.</div>
       <div style="margin-top:8px">${availList}</div>
       <div class="hint2"><b>Geladen (RAM/VRAM):</b> ${running}</div>
+      <hr/><h4>Sicherheit (Zwei-Faktor / MFA)</h4>
+      <div class="hint2">Status: <b>${me.mfa ? "aktiv ✓" : "aus"}</b> ·
+        ${me.mfa ? "MFA wird beim Login auf neuen Geräten abgefragt."
+                 : "Ohne MFA reicht Benutzername + Passwort."}</div>
+      <div id="mfa-area" style="margin-top:8px">
+        ${me.mfa ? '<button class="btn" id="mfa-off">MFA deaktivieren</button>'
+                 : '<button class="btn" id="mfa-on">MFA aktivieren</button>'}</div>
       <hr/><h4>Agenten-Modelle</h4>`;
     const modelOpts = '<option value="">—</option>' +
       (models.available || []).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
@@ -265,6 +296,36 @@
         ? `Lade „${name}" … Fortschritt siehst du im Board-Live-Log. Danach ⚙ neu öffnen.`
         : ("Fehler: " + (j.error || "?"));
     };
+    bodyEl.querySelectorAll("[data-model]").forEach((c) => { c.onclick = () => {
+      document.getElementById("pull-name").value = c.dataset.model;
+    }; });
+
+    // MFA aktivieren/deaktivieren
+    const mfaOn = document.getElementById("mfa-on");
+    if (mfaOn) mfaOn.onclick = async () => {
+      const j = await fetch("/api/mfa/enable", { method: "POST" }).then((r) => r.json()).catch(() => ({}));
+      if (!j.qr_svg && !j.secret) return alert("MFA-Setup nicht möglich.");
+      document.getElementById("mfa-area").innerHTML =
+        `<div class="qrbox">${j.qr_svg || ""}</div>
+         <div class="hint2">Secret: <code>${esc(j.secret)}</code></div>
+         <div class="row" style="margin-top:6px">
+           <input id="mfa-code" inputmode="numeric" maxlength="6" placeholder="Code aus der App" style="max-width:160px"/>
+           <button class="btn primary" id="mfa-confirm" style="margin-top:0">Bestätigen</button></div>`;
+      document.getElementById("mfa-confirm").onclick = async () => {
+        const v = await fetch("/api/mfa/enable/verify", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: document.getElementById("mfa-code").value }) })
+          .then((r) => r.json()).catch(() => ({}));
+        if (v.ok) openSettings(); else alert("Code falsch.");
+      };
+    };
+    const mfaOff = document.getElementById("mfa-off");
+    if (mfaOff) mfaOff.onclick = async () => {
+      if (!confirm("MFA wirklich deaktivieren?")) return;
+      await fetch("/api/mfa/disable", { method: "POST" });
+      openSettings();
+    };
+
     bodyEl.querySelectorAll("[data-delmodel]").forEach((b) => { b.onclick = async () => {
       if (!confirm(`Modell ${b.dataset.delmodel} löschen?`)) return;
       await fetch("/api/models/delete", { method: "POST", headers: { "Content-Type": "application/json" },

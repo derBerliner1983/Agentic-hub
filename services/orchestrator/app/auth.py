@@ -1,14 +1,16 @@
-"""Anmeldung mit MFA (TOTP) + Mehrbenutzer & Rollen.
+"""Anmeldung mit optionalem MFA (TOTP) + Mehrbenutzer & Rollen.
 
-- Ersteinrichtung (/setup): erster Benutzer = Rolle 'admin'. Passwort + TOTP.
-- Weitere Benutzer legt ein Admin an (Rolle 'admin' oder 'user').
-- Rollen: 'admin' darf alles (Settings, Benutzer, Update, Agenten);
-  'user' darf Tasks/Projekte nutzen, aber keine Systemeinstellungen ändern.
-- Session: HMAC-signierter Cookie mit Benutzername, HttpOnly, SameSite=Lax, 12 h.
+Flow:
+- Ersteinrichtung (/setup): erster Benutzer = Admin. MFA optional.
+- Login zweistufig: erst Benutzername+Passwort. NUR wenn der Benutzer MFA
+  aktiviert hat (und das Gerät nicht als vertrauenswürdig gemerkt ist), wird
+  danach der MFA-Code verlangt.
+- Session-Cookie 30 Tage (bleibt angemeldet). Zusätzlich ein „Gerät gemerkt"-
+  Cookie (60 Tage), damit auf demselben Browser nach Ablauf der Session der
+  MFA-Code nicht erneut nötig ist.
 
-Speicherung in instance/auth.json (gitignored). Migration vom alten
-Single-User-Format erfolgt automatisch (→ Benutzer 'admin').
-Notfall-Reset: Datei löschen. Escape-Hatch: AUTH_DISABLED=1.
+Speicherung in instance/auth.json. Migration alter Formate automatisch.
+Reset: Datei löschen. Escape-Hatch: AUTH_DISABLED=1.
 """
 from __future__ import annotations
 import base64
@@ -24,15 +26,18 @@ import time
 from . import store
 
 PBKDF_ITER = 200_000
-SESSION_TTL = 12 * 3600
+SESSION_TTL = 30 * 24 * 3600      # 30 Tage angemeldet bleiben
+DEVICE_TTL = 60 * 24 * 3600       # 60 Tage „Gerät gemerkt" (MFA überspringen)
 COOKIE = "vault_session"
+DEVICE_COOKIE = "vault_device"
 USERNAME_RE = re.compile(r"^[a-z0-9_-]{2,32}$")
 
 LOCK_MAX = 5
 LOCK_WINDOW = 300
 LOCK_TIME = 300
 
-_pending: dict[str, dict] = {}
+_pending: dict[str, dict] = {}          # Setup-Zwischenspeicher
+_pending_mfa: dict[str, str] = {}       # username -> secret (MFA nachträglich aktivieren)
 _fails: dict[str, list[float]] = {}
 
 
@@ -57,12 +62,22 @@ def clear_fails(key: str) -> None:
 # ---- Datenzugriff + Migration ----------------------------------------------
 def _data() -> dict:
     d = store.load("auth.json", None) or {}
-    # Migration: altes Single-User-Format → users['admin']
+    changed = False
+    # Alt: Single-User {salt,pwhash,totp_secret} → users['admin']
     if d.get("pwhash") and "users" not in d:
         d = {"session_key": d.get("session_key") or secrets.token_hex(32),
              "users": {"admin": {"salt": d["salt"], "pwhash": d["pwhash"],
-                                 "totp_secret": d["totp_secret"],
-                                 "totp_last": d.get("totp_last", 0), "role": "admin"}}}
+                                 "totp_secret": d["totp_secret"], "totp_last": d.get("totp_last", 0),
+                                 "role": "admin", "mfa_enabled": True}}}
+        changed = True
+    # Jeden Benutzer normalisieren: mfa_enabled aus vorhandenem Secret ableiten
+    for u in d.get("users", {}).values():
+        if "mfa_enabled" not in u:
+            u["mfa_enabled"] = bool(u.get("totp_secret"))
+            changed = True
+        u.setdefault("totp_secret", "")
+        u.setdefault("totp_last", 0)
+    if changed and d.get("users"):
         store.save("auth.json", d)
     return d
 
@@ -84,12 +99,18 @@ def required() -> bool:
 
 
 def list_users() -> list[dict]:
-    return [{"username": u, "role": v.get("role", "user")} for u, v in _users().items()]
+    return [{"username": u, "role": v.get("role", "user"), "mfa": bool(v.get("mfa_enabled"))}
+            for u, v in _users().items()]
 
 
 def get_role(username: str) -> str | None:
     u = _users().get(username)
     return u.get("role") if u else None
+
+
+def mfa_enabled(username: str) -> bool:
+    u = _users().get(username)
+    return bool(u and u.get("mfa_enabled") and u.get("totp_secret"))
 
 
 # ---- Passwort / TOTP --------------------------------------------------------
@@ -130,18 +151,24 @@ def _enroll_uri(username: str, secret: str) -> str:
 
 
 # ---- Ersteinrichtung (erster Admin) ----------------------------------------
-def start_setup(username: str, password: str) -> dict | None:
+def start_setup(username: str, password: str, enable_mfa: bool) -> dict | None:
     username = (username or "admin").strip().lower()
     if not USERNAME_RE.match(username):
         return None
-    secret = new_totp_secret()
     salt = secrets.token_bytes(16)
+    pwhash = _hash_pw(password, salt)
+    if not enable_mfa:
+        _save({"session_key": secrets.token_hex(32),
+               "users": {username: {"salt": salt.hex(), "pwhash": pwhash, "totp_secret": "",
+                                    "totp_last": 0, "role": "admin", "mfa_enabled": False}}})
+        return {"done": True}
+    secret = new_totp_secret()
     token = secrets.token_urlsafe(24)
     _pending.clear()
-    _pending[token] = {"username": username, "secret": secret, "salt": salt.hex(),
-                       "pwhash": _hash_pw(password, salt)}
+    _pending[token] = {"username": username, "secret": secret, "salt": salt.hex(), "pwhash": pwhash}
     uri = _enroll_uri(username, secret)
-    return {"setup_token": token, "secret": secret, "otpauth": uri, "qr_svg": qr_svg(uri)}
+    return {"done": False, "setup_token": token, "secret": secret,
+            "otpauth": uri, "qr_svg": qr_svg(uri)}
 
 
 def confirm_setup(token: str, code: str) -> bool:
@@ -151,7 +178,7 @@ def confirm_setup(token: str, code: str) -> bool:
     _save({"session_key": secrets.token_hex(32),
            "users": {p["username"]: {"salt": p["salt"], "pwhash": p["pwhash"],
                                      "totp_secret": p["secret"], "totp_last": 0,
-                                     "role": "admin"}}})
+                                     "role": "admin", "mfa_enabled": True}}})
     _pending.clear()
     return True
 
@@ -164,15 +191,12 @@ def add_user(username: str, password: str, role: str = "user") -> dict | None:
     d = _data()
     if not d.get("users") or username in d["users"]:
         return None
-    secret = new_totp_secret()
     salt = secrets.token_bytes(16)
     d["users"][username] = {"salt": salt.hex(), "pwhash": _hash_pw(password, salt),
-                            "totp_secret": secret, "totp_last": 0,
-                            "role": "admin" if role == "admin" else "user"}
+                            "totp_secret": "", "totp_last": 0,
+                            "role": "admin" if role == "admin" else "user", "mfa_enabled": False}
     _save(d)
-    uri = _enroll_uri(username, secret)
-    return {"username": username, "role": d["users"][username]["role"],
-            "secret": secret, "otpauth": uri, "qr_svg": qr_svg(uri)}
+    return {"username": username, "role": d["users"][username]["role"]}
 
 
 def delete_user(username: str) -> bool:
@@ -180,7 +204,6 @@ def delete_user(username: str) -> bool:
     users = d.get("users", {})
     if username not in users:
         return False
-    # letzten Admin nicht löschen
     admins = [u for u, v in users.items() if v.get("role") == "admin"]
     if users[username].get("role") == "admin" and len(admins) <= 1:
         return False
@@ -189,46 +212,101 @@ def delete_user(username: str) -> bool:
     return True
 
 
-# ---- Login / Session --------------------------------------------------------
-def login(username: str, password: str, code: str) -> str | None:
+# ---- MFA nachträglich aktivieren/deaktivieren ------------------------------
+def begin_enable_mfa(username: str) -> dict | None:
+    if username not in _users():
+        return None
+    secret = new_totp_secret()
+    _pending_mfa[username] = secret
+    uri = _enroll_uri(username, secret)
+    return {"secret": secret, "otpauth": uri, "qr_svg": qr_svg(uri)}
+
+
+def confirm_enable_mfa(username: str, code: str) -> bool:
+    secret = _pending_mfa.get(username)
+    if not secret or not verify_totp(secret, code):
+        return False
+    d = _data()
+    u = d["users"].get(username)
+    if not u:
+        return False
+    u["totp_secret"] = secret
+    u["totp_last"] = 0
+    u["mfa_enabled"] = True
+    _save(d)
+    _pending_mfa.pop(username, None)
+    return True
+
+
+def disable_mfa(username: str) -> bool:
+    d = _data()
+    u = d["users"].get(username)
+    if not u:
+        return False
+    u["mfa_enabled"] = False
+    u["totp_secret"] = ""
+    _save(d)
+    return True
+
+
+# ---- Login (zweistufig) -----------------------------------------------------
+def check_password(username: str, password: str) -> bool:
+    u = _users().get((username or "").strip().lower())
+    if not u:
+        return False
+    return hmac.compare_digest(_hash_pw(password or "", bytes.fromhex(u["salt"])), u["pwhash"])
+
+
+def verify_code(username: str, code: str) -> bool:
     username = (username or "").strip().lower()
     d = _data()
-    u = d.get("users", {}).get(username)
-    if not u:
-        return None
-    if not hmac.compare_digest(_hash_pw(password or "", bytes.fromhex(u["salt"])), u["pwhash"]):
-        return None
+    u = d["users"].get(username)
+    if not u or not u.get("totp_secret"):
+        return False
     counter = totp_counter(u["totp_secret"], code)
     if counter < 0 or counter <= int(u.get("totp_last", 0)):
-        return None
+        return False
     u["totp_last"] = counter
     _save(d)
-    return create_session(username)
+    return True
+
+
+# ---- Session + „Gerät gemerkt" ---------------------------------------------
+def _sign(kind: str, username: str, exp: str) -> str:
+    key = bytes.fromhex(_data()["session_key"])
+    return hmac.new(key, f"{kind}.{username}.{exp}".encode(), hashlib.sha256).hexdigest()
 
 
 def create_session(username: str) -> str:
-    d = _data()
     exp = str(int(time.time()) + SESSION_TTL)
-    msg = f"{username}.{exp}"
-    sig = hmac.new(bytes.fromhex(d["session_key"]), msg.encode(), hashlib.sha256).hexdigest()
-    return f"{msg}.{sig}"
+    return f"{username}.{exp}.{_sign('sess', username, exp)}"
 
 
 def verify_session(token: str | None) -> str | None:
-    """Gibt den Benutzernamen zurück oder None."""
     if not token or token.count(".") != 2:
         return None
-    d = _data()
-    if not d.get("session_key"):
+    if not _data().get("session_key"):
         return None
-    username, exp_s, sig = token.split(".")
-    if not exp_s.isdigit() or int(exp_s) < time.time():
+    username, exp, sig = token.split(".")
+    if not exp.isdigit() or int(exp) < time.time():
         return None
-    good = hmac.new(bytes.fromhex(d["session_key"]), f"{username}.{exp_s}".encode(),
-                    hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(good, sig):
+    if not hmac.compare_digest(_sign("sess", username, exp), sig):
         return None
-    return username if username in d.get("users", {}) else None
+    return username if username in _users() else None
+
+
+def create_device(username: str) -> str:
+    exp = str(int(time.time()) + DEVICE_TTL)
+    return f"{username}.{exp}.{_sign('dev', username, exp)}"
+
+
+def verify_device(token: str | None, username: str) -> bool:
+    if not token or token.count(".") != 2:
+        return False
+    u, exp, sig = token.split(".")
+    if u != username or not exp.isdigit() or int(exp) < time.time():
+        return False
+    return hmac.compare_digest(_sign("dev", username, exp), sig)
 
 
 # ---- QR-Code ----------------------------------------------------------------
