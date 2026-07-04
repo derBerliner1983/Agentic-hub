@@ -251,12 +251,20 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
   (admin/user). `user` darf Tasks/Projekte, nicht Settings/Update/Benutzer.
   Migration vom Single-User-Format automatisch. Pro-Nutzer TOTP + Replay-Schutz.
 
+**Phase 12 – erledigt ✅**
+- **Automatisches Backup**: Scheduler schreibt zeitgesteuert tar.gz nach `./backups`
+  (Intervall + Aufbewahrung im Settings-Panel), unabhängig vom Provider.
+- **Audit-Log** (`audit.py`): wer/wann/was → instance/audit.log; Admin-Ansicht im
+  Settings-Panel, Endpoint `/api/audit`. Protokolliert Login, Task/Projekt-Run,
+  Settings, Benutzer, Update.
+- **fail2ban fürs HUD-Login**: Fehl-Logins → instance/auth.log
+  (`VAULT_AUTH_FAIL ip=…`), Filter + Jail via `harden.sh` installiert (5 → Bann).
+- **Live-Log** im Board: Coder-/Board-/Modell-/Backup-Events laufen live unten
+  im Kanban durch.
+
 **Backlog (noch offen)**
-- Automatisches, geplantes **Backup** (Timer → Git/USB/NAS)
-- **Audit-Log** (wer hat wann was ausgelöst)
-- **fail2ban-Filter** fürs HUD-Login
-- Runner-Profile: **Android-Emulator** & **Windows-VM** (schwer, Emulatoren nötig)
-- Projekt-Detail mit **Live-Log**-Panel (Streaming auch im Board)
+- Runner-Profile: **Android-Emulator** & **Windows-VM** (schwer, Emulatoren/VMs nötig)
+- Backup-Ziel extern (Git/USB/NAS) statt nur lokalem Ordner
 
 ---
 

@@ -17,6 +17,11 @@ _DEFAULTS = {
     "anthropic_model": "claude-sonnet-5",
     "openai_key": "",
     "openai_model": "gpt-4o",
+    # Automatisches Backup
+    "backup_enabled": False,
+    "backup_interval_hours": 24,
+    "backup_keep": 7,
+    "backup_dir": os.environ.get("BACKUP_DIR", "/backups"),
 }
 
 
@@ -45,6 +50,9 @@ def public() -> dict:
         "openai_model": d["openai_model"],
         "anthropic_key_set": bool(d["anthropic_key"]),
         "openai_key_set": bool(d["openai_key"]),
+        "backup_enabled": d["backup_enabled"],
+        "backup_interval_hours": d["backup_interval_hours"],
+        "backup_keep": d["backup_keep"],
     }
 
 

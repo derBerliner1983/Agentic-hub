@@ -12,7 +12,7 @@ import asyncio
 import datetime as dt
 
 from .events import EventBus
-from . import store, tasks as tasks_mod, settings as settings_mod
+from . import store, tasks as tasks_mod, settings as settings_mod, backup as backup_mod
 from .tasks import run_task
 
 
@@ -43,10 +43,29 @@ async def scheduler_loop(bus: EventBus) -> None:
         try:
             now = dt.datetime.now()
             state = store.load("schedule.json", {}) or {}
+            changed = False
+
+            # Automatisches Backup (unabhängig vom Provider)
+            cfg = settings_mod.get()
+            if cfg.get("backup_enabled"):
+                last_bk = state.get("_backup")
+                last_bk_dt = dt.datetime.fromisoformat(last_bk) if last_bk else None
+                interval = float(cfg.get("backup_interval_hours", 24) or 24) * 3600
+                if last_bk_dt is None or (now - last_bk_dt).total_seconds() >= interval:
+                    try:
+                        path = backup_mod.write_scheduled(cfg.get("backup_dir", "/backups"),
+                                                          int(cfg.get("backup_keep", 7)))
+                        await bus.publish({"type": "backup", "state": "done", "path": path})
+                    except Exception as exc:  # noqa: BLE001
+                        await bus.publish({"type": "backup", "state": "error", "error": str(exc)})
+                    state["_backup"] = now.isoformat()
+                    changed = True
+
             connected = (await settings_mod.build_provider().health())["connected"]
             if not connected:
+                if changed:
+                    store.save("schedule.json", state)
                 continue
-            changed = False
             for t in tasks_mod.all_tasks():
                 sched = t.get("schedule")
                 last_iso = state.get(t["id"])

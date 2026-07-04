@@ -5,6 +5,7 @@ Restore mit Path-Traversal-Schutz (keine absoluten Pfade, kein ../, keine
 Symlinks) – es wird nur in die bekannten Zielordner extrahiert.
 """
 from __future__ import annotations
+import datetime as dt
 import io
 import os
 import tarfile
@@ -25,6 +26,21 @@ def create_backup() -> bytes:
             if path.exists():
                 tar.add(str(path), arcname=name)
     return buf.getvalue()
+
+
+def write_scheduled(dest_dir: str, keep: int = 7) -> str:
+    """Backup als Datei ablegen und alte über `keep` hinaus löschen."""
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    fn = dest / f"vault-{dt.datetime.now():%Y%m%d-%H%M%S}.tar.gz"
+    fn.write_bytes(create_backup())
+    old = sorted(dest.glob("vault-*.tar.gz"))
+    for f in old[:-keep] if keep > 0 else []:
+        try:
+            f.unlink()
+        except Exception:  # noqa: BLE001
+            pass
+    return str(fn)
 
 
 def restore(data: bytes) -> dict:

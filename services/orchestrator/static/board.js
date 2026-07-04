@@ -38,6 +38,22 @@
   function stopPoll() { if (poll) clearInterval(poll); poll = null; }
   window.addEventListener("vault-board", () => visible && load());
 
+  // Live-Log: relevante Events unten im Board mitschreiben
+  const logEl = document.getElementById("board-log");
+  window.addEventListener("vault-log", (e) => {
+    const m = e.detail || {};
+    const t = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const label = m.type === "coder" ? "coder" : m.type === "backup" ? "backup"
+      : m.type === "model" ? "modell" : m.type;
+    const extra = m.role ? ` ${m.role}` : m.attempt ? ` #${m.attempt}` : m.model ? ` ${m.model}` : "";
+    const line = `[${t}] ${label} · ${m.state || ""}${extra}${m.error ? " – " + m.error : ""}`;
+    const div = document.createElement("div");
+    div.textContent = line;
+    logEl.appendChild(div);
+    while (logEl.childElementCount > 60) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  });
+
   async function load() {
     try {
       data = await fetch("/api/board").then((r) => r.json());

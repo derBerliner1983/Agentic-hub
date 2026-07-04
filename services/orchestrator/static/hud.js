@@ -203,6 +203,10 @@
         if (msg.type === "coder") handleCoder(msg);
         else handleBoard(msg);
       }
+      // Live-Log fürs Board (alle relevanten Events)
+      if (["board", "coder", "model", "project", "backup"].includes(msg.type)) {
+        window.dispatchEvent(new CustomEvent("vault-log", { detail: msg }));
+      }
     };
     ws.onclose = () => {
       connected = false; applyState(); setDeckEnabled();

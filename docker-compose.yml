@@ -10,10 +10,12 @@ services:
       - SKILLS_DIR=/skills
       - STORE_DIR=/instance
       - REPO_DIR=/repo
+      - BACKUP_DIR=/backups
     volumes:
       - ./vault:/vault
       - ./.claude/skills:/skills          # rw: Skills im HUD baubar
       - ./instance:/instance              # persistente Config (Tasks/Settings/Agents)
+      - ./backups:/backups                # automatische Backups (tar.gz)
       - ./:/repo                          # für den UPDATE-Button (git pull + rebuild)
       - /var/run/docker.sock:/var/run/docker.sock   # Update kann Container neu bauen
     extra_hosts:

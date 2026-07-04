@@ -128,6 +128,26 @@ apt-get install -y fail2ban >/dev/null
 systemctl enable --now fail2ban >/dev/null 2>&1 || true
 ok "fail2ban aktiv (SSH-Brute-Force-Schutz)"
 
+# HUD-Login zusätzlich mit fail2ban schützen
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AUTHLOG="$REPO_DIR/instance/auth.log"
+if [[ -f "$REPO_DIR/services/fail2ban/vault-login.conf" ]]; then
+  cp "$REPO_DIR/services/fail2ban/vault-login.conf" /etc/fail2ban/filter.d/vault-login.conf
+  touch "$AUTHLOG"
+  cat > /etc/fail2ban/jail.d/vault.conf <<EOF
+[vault-login]
+enabled  = true
+filter   = vault-login
+logpath  = $AUTHLOG
+maxretry = 5
+findtime = 600
+bantime  = 3600
+action   = iptables-allports[name=vault]
+EOF
+  systemctl restart fail2ban >/dev/null 2>&1 || true
+  ok "HUD-Login durch fail2ban geschützt (5 Fehlversuche → Bann)"
+fi
+
 # ---------------------------------------------------------------------------
 # 5) Kernel-/Netzwerk-Härtung
 # ---------------------------------------------------------------------------

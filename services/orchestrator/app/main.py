@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .events import EventBus
 from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
-from . import (auth, voice, executor, backup as backup_mod, board as board_mod,
+from . import (auth, audit, voice, executor, backup as backup_mod, board as board_mod,
                worker as worker_mod, settings as settings_mod, skills as skills_mod,
                agents as agents_mod)
 from .projects import run_project
@@ -179,11 +179,14 @@ async def auth_login(request: Request, data: dict = Body(...)) -> JSONResponse:
     if wait:
         return JSONResponse({"ok": False, "error": f"Zu viele Fehlversuche – gesperrt für {wait}s"},
                             status_code=429)
-    token = auth.login(data.get("username", ""), data.get("password", ""), data.get("code", ""))
+    username = data.get("username", "")
+    token = auth.login(username, data.get("password", ""), data.get("code", ""))
     if not token:
         auth.record_fail(key)
+        audit.auth_fail(key, username)
         return JSONResponse({"ok": False, "error": "Benutzer, Passwort oder Code falsch"}, status_code=401)
     auth.clear_fails(key)
+    audit.log(username, "login")
     resp = JSONResponse({"ok": True})
     resp.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_TTL,
                     httponly=True, samesite="lax", secure=_is_https(request))
@@ -218,6 +221,7 @@ async def api_user_add(request: Request, data: dict = Body(...)) -> JSONResponse
     if not res:
         return JSONResponse({"ok": False, "error": "Ungültig (Name a-z0-9_-, PW min. 8, evtl. existiert)"},
                             status_code=400)
+    audit.log(getattr(request.state, "username", "-"), "user_add", res["username"])
     return JSONResponse({"ok": True, **res})
 
 
@@ -225,7 +229,10 @@ async def api_user_add(request: Request, data: dict = Body(...)) -> JSONResponse
 async def api_user_del(request: Request, username: str) -> JSONResponse:
     if not _require_admin(request):
         return JSONResponse({"error": "nur Admin"}, status_code=403)
-    return JSONResponse({"ok": auth.delete_user(username)})
+    ok = auth.delete_user(username)
+    if ok:
+        audit.log(getattr(request.state, "username", "-"), "user_delete", username)
+    return JSONResponse({"ok": ok})
 
 
 # ---- Status / Vitals -------------------------------------------------------
@@ -264,9 +271,17 @@ async def api_task_delete(task_id: str) -> JSONResponse:
 
 
 @app.post("/api/tasks/{task_id}/run")
-async def api_run_task(task_id: str) -> JSONResponse:
+async def api_run_task(request: Request, task_id: str) -> JSONResponse:
+    audit.log(getattr(request.state, "username", "-"), "task_run", task_id)
     asyncio.create_task(run_task(task_id, provider(), bus))
     return JSONResponse({"ok": True, "task": task_id})
+
+
+@app.get("/api/audit")
+async def api_audit(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    return JSONResponse(audit.recent(150))
 
 
 # ---- Skills ----------------------------------------------------------------
@@ -292,6 +307,8 @@ async def api_settings_save(request: Request, patch: dict = Body(...)) -> JSONRe
     if not _require_admin(request):
         return JSONResponse({"error": "nur Admin"}, status_code=403)
     settings_mod.update(patch)
+    audit.log(getattr(request.state, "username", "-"), "settings_update",
+              ",".join(k for k in patch if "key" not in k))
     return JSONResponse(settings_mod.public())
 
 
@@ -335,10 +352,11 @@ async def api_agent_save(request: Request, agent: dict = Body(...)) -> JSONRespo
 
 
 @app.post("/api/projects/run")
-async def api_project_run(data: dict = Body(...)) -> JSONResponse:
+async def api_project_run(request: Request, data: dict = Body(...)) -> JSONResponse:
     goal = (data.get("goal") or "").strip()
     if not goal:
         return JSONResponse({"ok": False, "error": "kein Ziel"}, status_code=400)
+    audit.log(getattr(request.state, "username", "-"), "project_run", goal[:80])
     asyncio.create_task(run_project(goal, settings_mod.ollama_provider(), bus))
     return JSONResponse({"ok": True})
 
@@ -430,6 +448,7 @@ async def api_system_update(request: Request) -> JSONResponse:
         subprocess.Popen(["bash", script], cwd=REPO_DIR)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    audit.log(getattr(request.state, "username", "-"), "system_update", "")
     return JSONResponse({"ok": True, "note": "Update gestartet – Container startet gleich neu."})
 
 

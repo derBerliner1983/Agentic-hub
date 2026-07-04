@@ -147,7 +147,25 @@
         <label class="btn" style="text-align:center;cursor:pointer">⤒ Restore…
           <input id="restore-file" type="file" accept=".gz,.tgz,application/gzip" hidden/></label>
       </div>
-      <div class="hint2" id="restore-msg"></div>`);
+      <div class="hint2" id="restore-msg"></div>
+      <label class="switch" style="margin-top:12px">
+        <input type="checkbox" id="bk-enabled" ${s.backup_enabled ? "checked" : ""}/>
+        <span>Automatisches Backup</span></label>
+      <div class="row" style="margin-top:6px;align-items:center">
+        <input id="bk-interval" type="number" value="${s.backup_interval_hours}" style="max-width:70px"/>
+        <span class="hint2">Std.</span>
+        <input id="bk-keep" type="number" value="${s.backup_keep}" style="max-width:70px"/>
+        <span class="hint2">behalten</span>
+        <button class="btn" id="bk-save">Speichern</button>
+      </div>`);
+
+    document.getElementById("bk-save").onclick = async () => {
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup_enabled: document.getElementById("bk-enabled").checked,
+          backup_interval_hours: parseInt(document.getElementById("bk-interval").value, 10) || 24,
+          backup_keep: parseInt(document.getElementById("bk-keep").value, 10) || 7 }) });
+      document.getElementById("restore-msg").textContent = "Backup-Einstellungen gespeichert.";
+    };
 
     const rf = document.getElementById("restore-file");
     if (rf) rf.onchange = async () => {
@@ -211,7 +229,9 @@
           <input id="u-pw" type="password" placeholder="passwort (min.8)" style="max-width:150px"/>
           <select id="u-role"><option value="user">user</option><option value="admin">admin</option></select>
           <button class="btn" id="u-add">+ anlegen</button>
-        </div><div class="hint2" id="u-msg"></div>`;
+        </div><div class="hint2" id="u-msg"></div>
+        <hr/><h4>Audit-Log <button class="btn" id="audit-reload" style="padding:2px 8px">↻</button></h4>
+        <div id="auditlist" class="audit"></div>`;
     }
     bodyEl.insertAdjacentHTML("beforeend", html);
 
@@ -239,6 +259,15 @@
         });
       };
       renderUsers();
+      const renderAudit = async () => {
+        const rows = await fetch("/api/audit").then((r) => r.json()).catch(() => []);
+        document.getElementById("auditlist").innerHTML = rows.map((r) =>
+          `<div><span>${esc(r.t)}</span> <b>${esc(r.user)}</b> ${esc(r.action)}
+           <span style="opacity:.6">${esc(r.detail || "")}</span></div>`).join("") ||
+          '<div class="hint2">noch keine Einträge</div>';
+      };
+      renderAudit();
+      document.getElementById("audit-reload").onclick = renderAudit;
       document.getElementById("u-add").onclick = async () => {
         const j = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: document.getElementById("u-name").value,

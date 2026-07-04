@@ -28,3 +28,9 @@ instance/settings.json
 instance/agents.json
 instance/auth.json
 instance/board.json
+
+# Automatische Backups + Logs
+backups/
+instance/audit.log
+instance/auth.log
+instance/schedule.json

@@ -74,7 +74,12 @@ Oben im HUD schaltest du zwischen **GEHIRN** (Assistent) und **BOARD** (Kanban) 
   `pip/npm install` bekommen.
 
 **Backup/Restore:** im ⚙-Settings-Panel kannst du dein „Gehirn" (vault/ + instance/ +
-Skills) als `tar.gz` **herunterladen** und wieder **einspielen**.
+Skills) als `tar.gz` **herunterladen**, wieder **einspielen** oder **automatisch**
+zeitgesteuert nach `./backups` sichern lassen (Intervall/Aufbewahrung einstellbar).
+
+**Audit-Log & fail2ban:** Admins sehen im Settings-Panel, wer wann was ausgelöst hat.
+Fehl-Logins werden protokolliert; `scripts/harden.sh` richtet dafür einen
+fail2ban-Schutz ein (5 Fehlversuche → Bann). Im Board läuft ein **Live-Log** mit.
 
 ## Sicherheit
 
