@@ -208,10 +208,12 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
   Modell wird **automatisch geladen** (ensure_model) → Verifier prüft → Nachbessern-Schleife
 - Ergebnisse nach `vault/projects/`. Iteratives Ziel: robuste, autonome Ausführung.
 
-**Phase 7 – Appliance / „OS-Gefühl" (optional)**
-- Auto-Login + Chromium-Kiosk → Vollbild-HUD beim Boot
-- Plymouth-Boot-Splash (V.A.U.L.T.-Branding)
-- systemd-Units
+**Phase 7 – Appliance / „OS-Gefühl"**  ✅
+- Chromium-Kiosk (cage/Wayland) → bootet direkt ins Vollbild-HUD, systemd-Unit
+  `vault-kiosk.service` (Seat via seatd, tty1, Auto-Restart)
+- Plymouth-Boot-Splash mit V.A.U.L.T.-Branding (`scripts/setup-splash.sh`)
+- Wird bei MODE=both|kiosk automatisch von `install.sh` eingerichtet
+- Kiosk zeigt `http://localhost:3000` (localhost = secure context → Voice/Mikro ok)
 
 **Phase 8 – Sicherheit & Härtung**  ✅
 - Verifier-Härtung: echte Code-Checks (Sandbox) + Fehler-Rückkopplung

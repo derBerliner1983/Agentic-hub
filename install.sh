@@ -217,6 +217,8 @@ bash "$REPO_DIR/scripts/setup-obsidian.sh" "$MODE" "$REPO_DIR/vault" || warn "Ob
 if [[ "$MODE" == "both" || "$MODE" == "kiosk" ]]; then
   say "Kiosk"
   bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT}" || warn "Kiosk-Setup übersprungen."
+  say "Boot-Splash"
+  bash "$REPO_DIR/scripts/setup-splash.sh" || warn "Splash-Setup übersprungen."
 fi
 
 # ---------------------------------------------------------------------------

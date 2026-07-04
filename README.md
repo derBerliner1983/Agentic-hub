@@ -77,6 +77,16 @@ Aktualisieren (zieht neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
 Solange kein Modell verbunden ist, bleibt das Gehirn **leer** — erst bei der ersten
 Verbindung „bootet" es herein.
 
+## Appliance-Modus (eigenes „OS-Gefühl")
+
+Wählst du bei `./install.sh` den Modus **`both`** oder **`kiosk`** (Server mit Monitor),
+bootet der Rechner direkt ins Vollbild-HUD:
+- **Chromium-Kiosk** (Wayland/cage) als systemd-Dienst `vault-kiosk.service`
+- **V.A.U.L.T.-Boot-Splash** (Plymouth) statt Kernel-Logs
+- Kiosk zeigt `http://localhost:3000` (localhost → Mikro/Voice funktionieren)
+
+Fühlt sich an wie ein eigenes OS – ist aber wartbares Ubuntu darunter.
+
 ## Struktur
 
 ```
@@ -89,7 +99,8 @@ Agentic-hub/
 │   ├── orchestrator/             # 🤖 Backend + 📊 HUD
 │   │   ├── app/  (main, providers/, tasks, skills, settings, agents, projects, voice, vitals)
 │   │   └── static/  (index.html, brain.js, hud.js, ui.js, voice.js, styles.css)
-│   └── caddy/                    # 🔒 HTTPS-Reverse-Proxy
+│   ├── caddy/                    # 🔒 HTTPS-Reverse-Proxy
+│   └── plymouth/vault/           # 🖥 Boot-Splash-Theme (Kiosk)
 ├── vault/                        # 🧠 Memory (Obsidian)
 │   └── raw/ wiki/ output/ projects/ ops/ runs/
 ├── .claude/skills/               # ⚡ Skill-Bibliothek

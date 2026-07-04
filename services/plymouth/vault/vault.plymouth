@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=V.A.U.L.T.
+Description=V.A.U.L.T. Agentic OS Boot-Splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/vault
+ScriptFile=/usr/share/plymouth/themes/vault/vault.script

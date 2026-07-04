@@ -1,0 +1,58 @@
+// V.A.U.L.T. Boot-Splash (Plymouth script module)
+// Dunkler Hintergrund, goldener Titel, pulsierende Denk-Punkte.
+
+Window.SetBackgroundTopColor(0.024, 0.027, 0.039);     // #06070a
+Window.SetBackgroundBottomColor(0.024, 0.027, 0.039);
+
+gold_r = 0.847; gold_g = 0.706; gold_b = 0.353;        // #d8b45a
+muted_r = 0.49; muted_g = 0.53; muted_b = 0.58;
+
+cx = Window.GetWidth()  / 2;
+cy = Window.GetHeight() / 2;
+
+// Titel
+title_img = Image.Text("V . A . U . L . T .", gold_r, gold_g, gold_b);
+title = Sprite(title_img);
+title.SetX(cx - title_img.GetWidth() / 2);
+title.SetY(cy - title_img.GetHeight() / 2 - 20);
+title.SetZ(10);
+
+// Untertitel
+sub_img = Image.Text("VOICE-ACTIVATED UNIFIED LOGIC TERMINAL", muted_r, muted_g, muted_b);
+sub = Sprite(sub_img);
+sub.SetX(cx - sub_img.GetWidth() / 2);
+sub.SetY(cy + title_img.GetHeight() / 2 + 4);
+sub.SetZ(10);
+
+// Pulsierende Punkte als „Denk"-Indikator
+dot_count = 5;
+dots = [];
+for (i = 0; i < dot_count; i++) {
+  d_img = Image.Text("•", gold_r, gold_g, gold_b);
+  d = Sprite(d_img);
+  d.SetX(cx - (dot_count * 14) / 2 + i * 14);
+  d.SetY(cy + 44);
+  d.SetZ(10);
+  dots[i] = d;
+}
+
+progress = 0;
+fun refresh() {
+  progress++;
+  for (i = 0; i < dot_count; i++) {
+    phase = Math.Sin((progress / 12) - (i * 0.6));
+    opacity = 0.25 + 0.75 * ((phase + 1) / 2);
+    dots[i].SetOpacity(opacity);
+  }
+}
+Plymouth.SetRefreshFunction(refresh);
+
+// Passwort-/Statusmeldungen (z. B. Disk-Entschlüsselung)
+message_sprite = Sprite();
+message_sprite.SetPosition(cx, cy + 80, 10);
+fun message_callback(text) {
+  msg = Image.Text(text, muted_r, muted_g, muted_b);
+  message_sprite.SetImage(msg);
+  message_sprite.SetX(cx - msg.GetWidth() / 2);
+}
+Plymouth.SetMessageFunction(message_callback);
