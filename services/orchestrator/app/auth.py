@@ -1,13 +1,14 @@
-"""Anmeldung mit MFA (TOTP) für das HUD.
+"""Anmeldung mit MFA (TOTP) + Mehrbenutzer & Rollen.
 
-- Ersteinrichtung (/setup): Passwort setzen + TOTP-Secret per QR in eine
-  Authenticator-App (Google Authenticator, Aegis, 2FAS, …) übernehmen.
-- Login (/login): Passwort + 6-stelliger Code.
-- Session: HMAC-signierter Cookie (HttpOnly, SameSite=Lax), 12 h gültig.
+- Ersteinrichtung (/setup): erster Benutzer = Rolle 'admin'. Passwort + TOTP.
+- Weitere Benutzer legt ein Admin an (Rolle 'admin' oder 'user').
+- Rollen: 'admin' darf alles (Settings, Benutzer, Update, Agenten);
+  'user' darf Tasks/Projekte nutzen, aber keine Systemeinstellungen ändern.
+- Session: HMAC-signierter Cookie mit Benutzername, HttpOnly, SameSite=Lax, 12 h.
 
-Speicherung in instance/auth.json (gitignored, überlebt Updates).
-Notfall-Reset: Datei löschen → Setup beginnt neu.
-Escape-Hatch: AUTH_DISABLED=1 in der Umgebung schaltet die Anmeldung ab.
+Speicherung in instance/auth.json (gitignored). Migration vom alten
+Single-User-Format erfolgt automatisch (→ Benutzer 'admin').
+Notfall-Reset: Datei löschen. Escape-Hatch: AUTH_DISABLED=1.
 """
 from __future__ import annotations
 import base64
@@ -15,6 +16,7 @@ import hashlib
 import hmac
 import io
 import os
+import re
 import secrets
 import struct
 import time
@@ -24,25 +26,23 @@ from . import store
 PBKDF_ITER = 200_000
 SESSION_TTL = 12 * 3600
 COOKIE = "vault_session"
+USERNAME_RE = re.compile(r"^[a-z0-9_-]{2,32}$")
 
-# Brute-Force-Schutz (in-memory, pro Client-Key)
-LOCK_MAX = 5            # so viele Fehlversuche …
-LOCK_WINDOW = 300       # … innerhalb dieser Sekunden →
-LOCK_TIME = 300         # … Sperre für diese Sekunden
+LOCK_MAX = 5
+LOCK_WINDOW = 300
+LOCK_TIME = 300
 
-_pending: dict[str, dict] = {}   # Setup-Zwischenspeicher (nur im RAM)
-_fails: dict[str, list[float]] = {}   # Fehlversuche pro Client-Key
+_pending: dict[str, dict] = {}
+_fails: dict[str, list[float]] = {}
 
 
 # ---- Brute-Force-Schutz -----------------------------------------------------
 def locked_for(key: str) -> int:
-    """Sekunden verbleibende Sperre für diesen Client-Key (0 = frei)."""
     now = time.time()
     hits = [t for t in _fails.get(key, []) if now - t < LOCK_WINDOW]
     _fails[key] = hits
     if len(hits) >= LOCK_MAX:
-        remaining = int(LOCK_TIME - (now - hits[-LOCK_MAX]))
-        return max(0, remaining)
+        return max(0, int(LOCK_TIME - (now - hits[-LOCK_MAX])))
     return 0
 
 
@@ -54,26 +54,49 @@ def clear_fails(key: str) -> None:
     _fails.pop(key, None)
 
 
-# ---- Status ----------------------------------------------------------------
-def _cfg() -> dict | None:
-    return store.load("auth.json", None)
+# ---- Datenzugriff + Migration ----------------------------------------------
+def _data() -> dict:
+    d = store.load("auth.json", None) or {}
+    # Migration: altes Single-User-Format → users['admin']
+    if d.get("pwhash") and "users" not in d:
+        d = {"session_key": d.get("session_key") or secrets.token_hex(32),
+             "users": {"admin": {"salt": d["salt"], "pwhash": d["pwhash"],
+                                 "totp_secret": d["totp_secret"],
+                                 "totp_last": d.get("totp_last", 0), "role": "admin"}}}
+        store.save("auth.json", d)
+    return d
+
+
+def _save(d: dict) -> None:
+    store.save("auth.json", d)
+
+
+def _users() -> dict:
+    return _data().get("users", {})
 
 
 def configured() -> bool:
-    c = _cfg()
-    return bool(c and c.get("pwhash"))
+    return bool(_users())
 
 
 def required() -> bool:
     return os.environ.get("AUTH_DISABLED") != "1"
 
 
-# ---- Passwort ---------------------------------------------------------------
+def list_users() -> list[dict]:
+    return [{"username": u, "role": v.get("role", "user")} for u, v in _users().items()]
+
+
+def get_role(username: str) -> str | None:
+    u = _users().get(username)
+    return u.get("role") if u else None
+
+
+# ---- Passwort / TOTP --------------------------------------------------------
 def _hash_pw(pw: str, salt: bytes) -> str:
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, PBKDF_ITER).hex()
 
 
-# ---- TOTP (RFC 6238, SHA1, 30s, 6 Stellen) ----------------------------------
 def new_totp_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
 
@@ -88,7 +111,6 @@ def _totp_at(secret: str, counter: int, digits: int = 6) -> str:
 
 
 def totp_counter(secret: str, code: str, window: int = 1) -> int:
-    """Passender 30s-Zähler für den Code, oder -1. Für Replay-Schutz."""
     code = (code or "").strip().replace(" ", "")
     if not code.isdigit():
         return -1
@@ -103,70 +125,113 @@ def verify_totp(secret: str, code: str, window: int = 1) -> bool:
     return totp_counter(secret, code, window) >= 0
 
 
-# ---- Setup-Flow --------------------------------------------------------------
-def start_setup(password: str) -> dict:
+def _enroll_uri(username: str, secret: str) -> str:
+    return f"otpauth://totp/V.A.U.L.T.:{username}?secret={secret}&issuer=VAULT"
+
+
+# ---- Ersteinrichtung (erster Admin) ----------------------------------------
+def start_setup(username: str, password: str) -> dict | None:
+    username = (username or "admin").strip().lower()
+    if not USERNAME_RE.match(username):
+        return None
     secret = new_totp_secret()
     salt = secrets.token_bytes(16)
     token = secrets.token_urlsafe(24)
     _pending.clear()
-    _pending[token] = {"secret": secret, "salt": salt.hex(),
+    _pending[token] = {"username": username, "secret": secret, "salt": salt.hex(),
                        "pwhash": _hash_pw(password, salt)}
-    uri = f"otpauth://totp/V.A.U.L.T.?secret={secret}&issuer=VAULT"
-    return {"setup_token": token, "secret": secret, "otpauth": uri,
-            "qr_svg": qr_svg(uri)}
+    uri = _enroll_uri(username, secret)
+    return {"setup_token": token, "secret": secret, "otpauth": uri, "qr_svg": qr_svg(uri)}
 
 
 def confirm_setup(token: str, code: str) -> bool:
     p = _pending.get(token)
     if not p or not verify_totp(p["secret"], code):
         return False
-    store.save("auth.json", {"salt": p["salt"], "pwhash": p["pwhash"],
-                             "totp_secret": p["secret"],
-                             "session_key": secrets.token_hex(32)})
+    _save({"session_key": secrets.token_hex(32),
+           "users": {p["username"]: {"salt": p["salt"], "pwhash": p["pwhash"],
+                                     "totp_secret": p["secret"], "totp_last": 0,
+                                     "role": "admin"}}})
     _pending.clear()
     return True
 
 
-# ---- Login / Session ----------------------------------------------------------
-def login(password: str, code: str) -> str | None:
-    c = _cfg()
-    if not c:
+# ---- Benutzerverwaltung (Admin) --------------------------------------------
+def add_user(username: str, password: str, role: str = "user") -> dict | None:
+    username = (username or "").strip().lower()
+    if not USERNAME_RE.match(username) or len(password or "") < 8:
         return None
-    if not hmac.compare_digest(_hash_pw(password or "", bytes.fromhex(c["salt"])),
-                               c["pwhash"]):
+    d = _data()
+    if not d.get("users") or username in d["users"]:
         return None
-    counter = totp_counter(c["totp_secret"], code)
-    if counter < 0:
-        return None
-    # Replay-Schutz: ein einmal genutzter Code (bzw. älterer) wird abgelehnt.
-    if counter <= int(c.get("totp_last", 0)):
-        return None
-    c["totp_last"] = counter
-    store.save("auth.json", c)
-    return create_session()
+    secret = new_totp_secret()
+    salt = secrets.token_bytes(16)
+    d["users"][username] = {"salt": salt.hex(), "pwhash": _hash_pw(password, salt),
+                            "totp_secret": secret, "totp_last": 0,
+                            "role": "admin" if role == "admin" else "user"}
+    _save(d)
+    uri = _enroll_uri(username, secret)
+    return {"username": username, "role": d["users"][username]["role"],
+            "secret": secret, "otpauth": uri, "qr_svg": qr_svg(uri)}
 
 
-def create_session() -> str:
-    c = _cfg()
+def delete_user(username: str) -> bool:
+    d = _data()
+    users = d.get("users", {})
+    if username not in users:
+        return False
+    # letzten Admin nicht löschen
+    admins = [u for u, v in users.items() if v.get("role") == "admin"]
+    if users[username].get("role") == "admin" and len(admins) <= 1:
+        return False
+    del users[username]
+    _save(d)
+    return True
+
+
+# ---- Login / Session --------------------------------------------------------
+def login(username: str, password: str, code: str) -> str | None:
+    username = (username or "").strip().lower()
+    d = _data()
+    u = d.get("users", {}).get(username)
+    if not u:
+        return None
+    if not hmac.compare_digest(_hash_pw(password or "", bytes.fromhex(u["salt"])), u["pwhash"]):
+        return None
+    counter = totp_counter(u["totp_secret"], code)
+    if counter < 0 or counter <= int(u.get("totp_last", 0)):
+        return None
+    u["totp_last"] = counter
+    _save(d)
+    return create_session(username)
+
+
+def create_session(username: str) -> str:
+    d = _data()
     exp = str(int(time.time()) + SESSION_TTL)
-    sig = hmac.new(bytes.fromhex(c["session_key"]), exp.encode(), hashlib.sha256).hexdigest()
-    return f"{exp}.{sig}"
+    msg = f"{username}.{exp}"
+    sig = hmac.new(bytes.fromhex(d["session_key"]), msg.encode(), hashlib.sha256).hexdigest()
+    return f"{msg}.{sig}"
 
 
-def verify_session(token: str | None) -> bool:
-    if not token or "." not in token:
-        return False
-    c = _cfg()
-    if not c:
-        return False
-    exp_s, sig = token.split(".", 1)
+def verify_session(token: str | None) -> str | None:
+    """Gibt den Benutzernamen zurück oder None."""
+    if not token or token.count(".") != 2:
+        return None
+    d = _data()
+    if not d.get("session_key"):
+        return None
+    username, exp_s, sig = token.split(".")
     if not exp_s.isdigit() or int(exp_s) < time.time():
-        return False
-    good = hmac.new(bytes.fromhex(c["session_key"]), exp_s.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(good, sig)
+        return None
+    good = hmac.new(bytes.fromhex(d["session_key"]), f"{username}.{exp_s}".encode(),
+                    hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(good, sig):
+        return None
+    return username if username in d.get("users", {}) else None
 
 
-# ---- QR-Code (SVG, für die Authenticator-App) ---------------------------------
+# ---- QR-Code ----------------------------------------------------------------
 def qr_svg(data: str) -> str | None:
     try:
         import qrcode
@@ -175,5 +240,5 @@ def qr_svg(data: str) -> str | None:
         buf = io.BytesIO()
         img.save(buf)
         return buf.getvalue().decode()
-    except Exception:  # noqa: BLE001 – ohne qrcode-Paket: Secret manuell eintippen
+    except Exception:  # noqa: BLE001
         return None

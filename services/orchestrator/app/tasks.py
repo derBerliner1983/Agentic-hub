@@ -56,7 +56,12 @@ def _tasks() -> list[dict]:
 
 def task_list() -> list[dict]:
     return [{"id": t["id"], "title": t["title"], "domain": t.get("domain", "ops"),
-             "cadence": t.get("cadence", "on-demand")} for t in _tasks()]
+             "cadence": t.get("cadence", "on-demand"),
+             "schedule": t.get("schedule"), "model": t.get("model")} for t in _tasks()]
+
+
+def all_tasks() -> list[dict]:
+    return _tasks()
 
 
 def get_task(task_id: str) -> dict | None:
@@ -115,6 +120,7 @@ async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
 
     await emit("thinking")
     steps = task.get("steps") or [{"type": "prompt", "prompt": task.get("title", "")}]
+    model = task.get("model") or None
     context = ""
     outputs: list[str] = []
     try:
@@ -122,11 +128,13 @@ async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
             prompt = _resolve_step_prompt(step)
             if context:
                 prompt = f"{prompt}\n\n--- Kontext aus vorherigem Schritt ---\n{context}"
-            result = await provider.generate(prompt)
+            # Streaming: Chunks live ans HUD schicken
+            result = ""
+            async for chunk in provider.generate_stream(prompt, model=model):
+                result += chunk
+                await emit("stream", chunk=chunk, step=i + 1, steps=len(steps))
             outputs.append(result)
             context = result
-            if len(steps) > 1:
-                await emit("thinking", step=i + 1, steps=len(steps))
     except Exception as exc:  # noqa: BLE001
         await emit("error", error=str(exc))
         return

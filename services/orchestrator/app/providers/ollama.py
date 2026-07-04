@@ -1,5 +1,6 @@
 """Ollama-Adapter (lokales Modell, AMD/ROCm auf dem Host)."""
 from __future__ import annotations
+import json
 import httpx
 from .base import Provider, Health
 
@@ -15,6 +16,29 @@ class OllamaProvider(Provider):
             resp = await client.get(f"{self.base_url}/api/tags")
             resp.raise_for_status()
             return [m["name"] for m in resp.json().get("models", [])]
+
+    async def models_detailed(self) -> list[dict]:
+        """Verfügbare Modelle mit Größe (Bytes)."""
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{self.base_url}/api/tags")
+                resp.raise_for_status()
+                return [{"name": m["name"], "size": m.get("size", 0)}
+                        for m in resp.json().get("models", [])]
+        except Exception:  # noqa: BLE001
+            return []
+
+    async def running(self) -> list[dict]:
+        """Aktuell geladene Modelle (RAM/VRAM) via /api/ps."""
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{self.base_url}/api/ps")
+                resp.raise_for_status()
+                return [{"name": m["name"], "size": m.get("size", 0),
+                         "size_vram": m.get("size_vram", 0)}
+                        for m in resp.json().get("models", [])]
+        except Exception:  # noqa: BLE001
+            return []
 
     async def health(self) -> Health:
         try:
@@ -69,3 +93,27 @@ class OllamaProvider(Provider):
             resp = await client.post(f"{self.base_url}/api/generate", json=payload)
             resp.raise_for_status()
             return resp.json().get("response", "")
+
+    async def generate_stream(self, prompt: str, model: str | None = None,
+                              system: str | None = None):
+        if model is None:
+            models = await self._models()
+            if not models:
+                raise RuntimeError("Kein Ollama-Modell verfügbar.")
+            model = models[0]
+        payload = {"model": model, "prompt": prompt, "stream": True}
+        if system:
+            payload["system"] = system
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("POST", f"{self.base_url}/api/generate",
+                                     json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line).get("response", "")
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if chunk:
+                        yield chunk

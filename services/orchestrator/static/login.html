@@ -31,6 +31,8 @@
     <h1>V.A.U.L.T.</h1>
     <div class="sub">ZUGANG · PASSWORT + MFA-CODE</div>
     <form id="f">
+      <label>Benutzername</label>
+      <input id="user" autocomplete="username" value="admin" />
       <label>Passwort</label>
       <input id="pw" type="password" autocomplete="current-password" />
       <label>MFA-Code (Authenticator-App)</label>
@@ -48,6 +50,7 @@
       const r = await fetch("/auth/login", { method:"POST",
         headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({
+          username: document.getElementById("user").value,
           password: document.getElementById("pw").value,
           code: document.getElementById("code").value,
         }) });

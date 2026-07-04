@@ -24,3 +24,9 @@ class Provider:
     async def generate(self, prompt: str, model: str | None = None,
                        system: str | None = None) -> str:
         raise NotImplementedError
+
+    async def generate_stream(self, prompt: str, model: str | None = None,
+                              system: str | None = None):
+        """Streaming-Standard: liefert die komplette Antwort in einem Stück.
+        Provider mit echtem Streaming (Ollama) überschreiben das."""
+        yield await self.generate(prompt, model, system)

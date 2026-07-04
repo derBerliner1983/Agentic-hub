@@ -44,10 +44,11 @@ def set_autonomous(on: bool) -> dict:
 
 
 def add_project(title: str, goal: str = "", detail: str = "", ptype: str = "general",
-                network: bool = False) -> dict:
+                network: bool = False, runner: str | None = None) -> dict:
     b = get_board()
     proj = {"id": _new_id(), "title": title or "Projekt", "goal": goal, "detail": detail,
-            "type": ptype, "network": bool(network), "created": _now(), "cards": []}
+            "type": ptype, "network": bool(network), "runner": runner or None,
+            "created": _now(), "cards": []}
     b["projects"].append(proj)
     _save(b)
     return proj

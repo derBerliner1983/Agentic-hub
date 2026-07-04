@@ -75,19 +75,30 @@
     }
   }
 
+  const _stream = {};   // task-id → akkumulierter Text (Live-Streaming)
   function handleTask(msg) {
     taskcard.hidden = false;
     taskTitle.textContent = (msg.title || msg.id || "").toUpperCase();
-    const labels = { queued: "eingereiht", thinking: "denkt …", writing: "schreibt …",
+    if (msg.state === "stream") {
+      _stream[msg.id] = (_stream[msg.id] || "") + (msg.chunk || "");
+      taskState.textContent = "✎ " + _stream[msg.id].slice(-140).replace(/\s+/g, " ");
+      activeTasks = Math.max(activeTasks, 1);
+      if (msg.domain) brain.setActiveDomain(msg.domain);
+      applyState();
+      return;
+    }
+    const labels = { queued: "eingereiht", scheduled: "geplant · startet …",
+                     thinking: "denkt …", writing: "schreibt …",
                      done: "fertig ✓", error: "Fehler: " + (msg.error || "") };
     taskState.textContent = labels[msg.state] || msg.state;
 
     const btn = deck.querySelector(`.deck-btn[data-id="${msg.id}"]`);
-    if (["queued", "thinking", "writing"].includes(msg.state)) {
+    if (["queued", "scheduled", "thinking", "writing"].includes(msg.state)) {
       activeTasks = Math.max(activeTasks, 1);
       if (msg.domain) brain.setActiveDomain(msg.domain);   // Hirn-Segment aktivieren
     }
     if (msg.state === "done" || msg.state === "error") {
+      delete _stream[msg.id];
       activeTasks = Math.max(0, activeTasks - 1);
       if (btn) btn.classList.remove("running");
       if (activeTasks === 0) brain.setActiveDomain(null);

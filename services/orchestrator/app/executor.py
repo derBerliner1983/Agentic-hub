@@ -19,12 +19,19 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = int(os.environ.get("EXEC_TIMEOUT", "40"))
 
-# Runner-Profile: Sprache → (Image, Startbefehl, Hauptdateiname)
+# Runner-Profile: Sprache → (Image, Startbefehl, Hauptdatei, Netz-Default, Timeout)
 PROFILES: dict[str, dict] = {
     "python": {"image": "python:3.12-slim", "cmd": "python main.py", "file": "main.py"},
     "node":   {"image": "node:20-slim",     "cmd": "node main.js",   "file": "main.js"},
     "javascript": {"image": "node:20-slim", "cmd": "node main.js",   "file": "main.js"},
     "bash":   {"image": "debian:stable-slim", "cmd": "bash main.sh", "file": "main.sh"},
+    # Python mit Abhängigkeiten: installiert requirements.txt (Netz an)
+    "python-deps": {"image": "python:3.12-slim",
+                    "cmd": "pip install -q -r requirements.txt 2>/dev/null; python main.py",
+                    "file": "main.py", "network": True, "timeout": 120},
+    # Web-E2E: echtes Chromium via Playwright – lädt Seiten, klickt, prüft
+    "web": {"image": "mcr.microsoft.com/playwright/python:v1.49.0-jammy",
+            "cmd": "python main.py", "file": "main.py", "network": True, "timeout": 90},
 }
 
 
@@ -42,13 +49,18 @@ def supported_langs() -> list[str]:
     return sorted(PROFILES.keys())
 
 
-def run(lang: str, code: str, *, network: bool = False,
-        timeout: int = DEFAULT_TIMEOUT, files: dict | None = None) -> dict:
-    """Führt Code aus. Liefert {ok, exit_code, stdout, stderr, skipped, reason}."""
+def run(lang: str, code: str, *, network: bool | None = None,
+        timeout: int | None = None, files: dict | None = None) -> dict:
+    """Führt Code aus. Liefert {ok, exit_code, stdout, stderr, skipped, reason}.
+    network=None → Profil-Default; timeout=None → Profil-Default oder EXEC_TIMEOUT."""
     prof = PROFILES.get(lang)
     if not prof:
         return {"ok": True, "skipped": True, "reason": f"kein Runner für '{lang}'",
                 "exit_code": 0, "stdout": "", "stderr": ""}
+    if network is None:
+        network = prof.get("network", False)
+    if timeout is None:
+        timeout = prof.get("timeout", DEFAULT_TIMEOUT)
     if not available():
         return {"ok": True, "skipped": True, "reason": "Docker nicht verfügbar",
                 "exit_code": 0, "stdout": "", "stderr": ""}

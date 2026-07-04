@@ -41,7 +41,8 @@ async def _process(project: dict, card: dict, bus: EventBus) -> None:
     try:
         if _is_code_card(project, card):
             res = await coder_loop.build_and_test(
-                goal, ollama, bus, network=bool(project.get("network")))
+                goal, ollama, bus, network=project.get("network"),
+                profile=project.get("runner"))
             artifacts = res.get("artifacts", {})
             result_md = (f"**Sprache:** {res['lang']} · **Versuche:** {res['attempts']} · "
                          f"**getestet:** {'ja' if res.get('tested') else 'nein'}\n\n"

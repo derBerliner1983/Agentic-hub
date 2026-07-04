@@ -54,13 +54,15 @@ async def _status_poller() -> None:
 
 @app.on_event("startup")
 async def _startup() -> None:
+    from . import scheduler as scheduler_mod
     app.state.poller = asyncio.create_task(_status_poller())
     app.state.worker = asyncio.create_task(worker_mod.worker_loop(bus))
+    app.state.scheduler = asyncio.create_task(scheduler_mod.scheduler_loop(bus))
 
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
-    for t in (app.state.poller, app.state.worker):
+    for t in (app.state.poller, app.state.worker, app.state.scheduler):
         t.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await t
@@ -98,11 +100,18 @@ async def auth_middleware(request: Request, call_next):
         if path.startswith("/api/"):
             return JSONResponse({"error": "setup required"}, status_code=401)
         return RedirectResponse("/setup")
-    if auth.verify_session(request.cookies.get(auth.COOKIE)):
+    username = auth.verify_session(request.cookies.get(auth.COOKIE))
+    if username:
+        request.state.username = username
+        request.state.role = auth.get_role(username) or "user"
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     return RedirectResponse("/login")
+
+
+def _require_admin(request: Request) -> bool:
+    return getattr(request.state, "role", None) == "admin" or not auth.required()
 
 
 @app.get("/setup")
@@ -144,7 +153,10 @@ async def auth_setup(request: Request, data: dict = Body(...)) -> JSONResponse:
     pw = data.get("password") or ""
     if len(pw) < 8:
         return JSONResponse({"ok": False, "error": "Passwort min. 8 Zeichen"}, status_code=400)
-    return JSONResponse({"ok": True, **auth.start_setup(pw)})
+    res = auth.start_setup(data.get("username", "admin"), pw)
+    if not res:
+        return JSONResponse({"ok": False, "error": "Ungültiger Benutzername (a-z0-9_-, 2-32)"}, status_code=400)
+    return JSONResponse({"ok": True, **res})
 
 
 @app.post("/auth/setup/verify")
@@ -167,10 +179,10 @@ async def auth_login(request: Request, data: dict = Body(...)) -> JSONResponse:
     if wait:
         return JSONResponse({"ok": False, "error": f"Zu viele Fehlversuche – gesperrt für {wait}s"},
                             status_code=429)
-    token = auth.login(data.get("password", ""), data.get("code", ""))
+    token = auth.login(data.get("username", ""), data.get("password", ""), data.get("code", ""))
     if not token:
         auth.record_fail(key)
-        return JSONResponse({"ok": False, "error": "Passwort oder Code falsch"}, status_code=401)
+        return JSONResponse({"ok": False, "error": "Benutzer, Passwort oder Code falsch"}, status_code=401)
     auth.clear_fails(key)
     resp = JSONResponse({"ok": True})
     resp.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_TTL,
@@ -183,6 +195,37 @@ async def auth_logout() -> JSONResponse:
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.COOKIE)
     return resp
+
+
+@app.get("/api/me")
+async def api_me(request: Request) -> JSONResponse:
+    return JSONResponse({"username": getattr(request.state, "username", None),
+                         "role": getattr(request.state, "role", "user")})
+
+
+@app.get("/api/users")
+async def api_users(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    return JSONResponse(auth.list_users())
+
+
+@app.post("/api/users")
+async def api_user_add(request: Request, data: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    res = auth.add_user(data.get("username", ""), data.get("password", ""), data.get("role", "user"))
+    if not res:
+        return JSONResponse({"ok": False, "error": "Ungültig (Name a-z0-9_-, PW min. 8, evtl. existiert)"},
+                            status_code=400)
+    return JSONResponse({"ok": True, **res})
+
+
+@app.delete("/api/users/{username}")
+async def api_user_del(request: Request, username: str) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    return JSONResponse({"ok": auth.delete_user(username)})
 
 
 # ---- Status / Vitals -------------------------------------------------------
@@ -245,9 +288,17 @@ async def api_settings() -> JSONResponse:
 
 
 @app.post("/api/settings")
-async def api_settings_save(patch: dict = Body(...)) -> JSONResponse:
+async def api_settings_save(request: Request, patch: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
     settings_mod.update(patch)
     return JSONResponse(settings_mod.public())
+
+
+@app.get("/api/models")
+async def api_models() -> JSONResponse:
+    o = settings_mod.ollama_provider()
+    return JSONResponse({"available": await o.models_detailed(), "running": await o.running()})
 
 
 # ---- Backup / Restore ------------------------------------------------------
@@ -277,7 +328,9 @@ async def api_agents() -> JSONResponse:
 
 
 @app.post("/api/agents")
-async def api_agent_save(agent: dict = Body(...)) -> JSONResponse:
+async def api_agent_save(request: Request, agent: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
     return JSONResponse(agents_mod.save_agent(agent))
 
 
@@ -308,7 +361,7 @@ async def api_board_add_project(data: dict = Body(...)) -> JSONResponse:
     return JSONResponse(board_mod.add_project(
         data.get("title", ""), data.get("goal", ""),
         data.get("detail", ""), data.get("type", "general"),
-        bool(data.get("network", False))))
+        bool(data.get("network", False)), data.get("runner")))
 
 
 @app.delete("/api/board/projects/{pid}")
@@ -366,7 +419,9 @@ async def _plan_cards(pid: str, goal: str) -> None:
 
 # ---- System-Update (UPDATE-Button) ----------------------------------------
 @app.post("/api/system/update")
-async def api_system_update() -> JSONResponse:
+async def api_system_update(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
     script = os.path.join(REPO_DIR, "update.sh")
     if not os.path.isfile(script):
         return JSONResponse({"ok": False, "error": f"update.sh nicht gefunden ({script}). "

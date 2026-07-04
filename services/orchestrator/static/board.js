@@ -129,9 +129,16 @@
     const title = prompt("Projekt-Titel:"); if (!title) return;
     const goal = prompt("Ziel (was soll erreicht werden?):") || "";
     const isCode = confirm("Ist das ein CODE-Projekt? (dann testet der Agent den Code real)");
+    let runner = null, network = false;
+    if (isCode) {
+      runner = (prompt("Runner: python / node / web / python-deps", "python") || "python").trim();
+      network = ["web", "python-deps"].includes(runner) ||
+        confirm("Netzwerk im Container erlauben? (für pip/npm install, API-Tests)");
+    }
     const p = await fetch("/api/board/projects", { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, goal, type: isCode ? "code" : "general" }) }).then((r) => r.json());
+      body: JSON.stringify({ title, goal, type: isCode ? "code" : "general", runner, network }) })
+      .then((r) => r.json());
     active = p.id; load();
   };
   document.getElementById("proj-del").onclick = async () => {

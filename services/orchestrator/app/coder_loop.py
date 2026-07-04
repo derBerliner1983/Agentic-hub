@@ -35,7 +35,8 @@ def _extract_code(text: str, prefer: str | None = None) -> tuple[str, str]:
 
 
 async def build_and_test(goal: str, ollama: OllamaProvider, bus: EventBus,
-                         lang_hint: str | None = None, network: bool = False) -> dict:
+                         lang_hint: str | None = None, network: bool | None = None,
+                         profile: str | None = None) -> dict:
     coder = agents.get_agent("coder")
 
     async def emit(state: str, **extra):
@@ -44,14 +45,25 @@ async def build_and_test(goal: str, ollama: OllamaProvider, bus: EventBus,
     await emit("starting")
     await ollama.ensure_model(coder["model"], bus)
 
-    langs = ", ".join(executor.supported_langs())
-    write_prompt = (
-        f"Aufgabe: {goal}\n\n"
-        f"Schreibe VOLLSTÄNDIGEN, lauffähigen Code in EINER Datei. "
-        f"Unterstützte Sprachen: {langs}. Gib NUR einen Markdown-Code-Block mit "
-        f"Sprach-Tag zurück, keinen Text davor/danach.")
+    forced = profile if (profile and profile in executor.PROFILES) else None
+    if forced == "web":
+        write_prompt = (
+            f"Aufgabe: {goal}\n\n"
+            f"Schreibe ein vollständiges Playwright-Python-Skript (sync API, "
+            f"`from playwright.sync_api import sync_playwright`, headless=True), das die "
+            f"Aufgabe testet und bei Erfolg 'OK' ausgibt bzw. bei Fehler eine Exception wirft. "
+            f"Gib NUR einen Python-Code-Block zurück.")
+    else:
+        langs = ", ".join(executor.supported_langs())
+        write_prompt = (
+            f"Aufgabe: {goal}\n\n"
+            f"Schreibe VOLLSTÄNDIGEN, lauffähigen Code in EINER Datei. "
+            f"Unterstützte Sprachen: {langs}. Gib NUR einen Markdown-Code-Block mit "
+            f"Sprach-Tag zurück, keinen Text davor/danach.")
     draft = await ollama.generate(write_prompt, model=coder["model"], system=coder["system"])
     lang, code = _extract_code(draft, lang_hint)
+    if forced:
+        lang = forced   # Profil bestimmt den Runner (z. B. 'web')
 
     last = {"ok": False, "stderr": "", "stdout": ""}
     for attempt in range(1, MAX_ATTEMPTS + 1):

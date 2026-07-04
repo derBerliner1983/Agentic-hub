@@ -236,21 +236,27 @@ PLAN TODAY · PLAN TMRW · WK REVIEW · VAULT CLEAN`
 
 ---
 
-## 15. Backlog / sinnvolle nächste Features (geplant)
+## 15. Erweiterte Features
 
-**Sicherheit/Betrieb**
-- Automatisches, geplantes Backup (Cron/Timer → Git/USB/NAS)
-- Audit-Log (wer hat wann Task/Projekt/Update ausgelöst)
-- fail2ban-Filter fürs HUD-Login (429er zusätzlich auf IP-Ebene sperren)
-- HTTP→HTTPS-Redirect standardmäßig / Login nur über HTTPS
+**Phase 11 – erledigt ✅**
+- **Runner-Profile**: `web` (Playwright/Chromium, echtes Web-E2E) und `python-deps`
+  (pip install, Netz an) neben python/node/bash. Netz-Default pro Profil.
+- **Scheduler/Cadence** (`scheduler.py`): Tasks mit `schedule` laufen zeitgesteuert
+  (`interval` alle N Min / `daily` HH:MM), Läufe gemerkt in instance/schedule.json.
+- **Modell pro Task/Agent** im HUD wählbar; `/api/models` zeigt verfügbare +
+  geladene Ollama-Modelle inkl. RAM/VRAM.
+- **Streaming**: Task-Antworten tippen live im HUD (Ollama `stream`), Event
+  `state=stream` mit Chunks.
+- **Mehrbenutzer + Rollen**: erster Nutzer = Admin; Admin legt weitere an
+  (admin/user). `user` darf Tasks/Projekte, nicht Settings/Update/Benutzer.
+  Migration vom Single-User-Format automatisch. Pro-Nutzer TOTP + Replay-Schutz.
 
-**Funktion**
-- Runner-Profile erweitern: **Web-E2E mit Playwright/Chromium** (vorinstalliert!),
-  später **Android-Emulator**- und **Windows-VM**-Profile
-- Scheduler/Cadence für Tasks (zeitgesteuert, wie „scheduled" im Video)
-- Modell-Auswahl pro Task/Agent im HUD + Anzeige geladener Ollama-Modelle/RAM
-- Streaming-Ausgabe im HUD (Antwort live tippen) + Projekt-Detail mit Live-Log
-- Mehrbenutzer + Rollen (für Team/Kunden – „Distribution" aus dem Video)
+**Backlog (noch offen)**
+- Automatisches, geplantes **Backup** (Timer → Git/USB/NAS)
+- **Audit-Log** (wer hat wann was ausgelöst)
+- **fail2ban-Filter** fürs HUD-Login
+- Runner-Profile: **Android-Emulator** & **Windows-VM** (schwer, Emulatoren nötig)
+- Projekt-Detail mit **Live-Log**-Panel (Streaming auch im Board)
 
 ---
 

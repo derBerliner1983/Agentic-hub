@@ -43,7 +43,11 @@ Aktualisieren (zieht neuesten Git-Stand, baut rollend neu, ohne Rückfragen):
 - **Command Deck** (rechts): Tasks per Klick starten.
 - **＋ Builder**: eigene **Tasks aus Skills zusammensetzen** und neue **Skills** anlegen —
   so bringst du dein Wissen in wiederverwendbare Aufgaben.
-- **⚙ Settings**: Provider umschalten (Ollama lokal · Claude · OpenAI), Keys bleiben lokal.
+- **⚙ Settings**: Provider umschalten (Ollama · Claude · OpenAI), **Modelle** ansehen
+  (verfügbar/geladen), **Agenten-Modelle** setzen, **Benutzer** verwalten (Admin), Backup/Restore.
+- **Zeitplan**: Tasks im Builder auf `alle N Min` oder `täglich HH:MM` stellen → laufen automatisch.
+- **Streaming**: Antworten tippen live im HUD.
+- **Mehrbenutzer**: erster Login = Admin; Admin legt weitere Nutzer an (Rollen admin/user).
 - **↻ Update**: aus Git aktualisieren.
 - **Voice**: Space halten zum Sprechen → Befehl löst passenden Task aus (braucht HTTPS/localhost).
 - **Projekt-Launcher** (unter dem Gehirn): Ziel eingeben → der Agent **plant**, **stellt

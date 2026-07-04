@@ -20,11 +20,14 @@
 
   // ---- BUILDER (Tasks aus Skills bauen + Skills anlegen) -------------------
   async function openBuilder() {
-    const [skills, tasks] = await Promise.all([
+    const [skills, tasks, models] = await Promise.all([
       fetch("/api/skills").then((r) => r.json()),
       fetch("/api/tasks").then((r) => r.json()),
+      fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [] })),
     ]);
     const skillOpts = skills.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+    const modelOpts = '<option value="">Standard</option>' +
+      (models.available || []).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
     open("Builder", `
       <div class="b-cols">
         <section>
@@ -36,6 +39,16 @@
               <option>content</option><option selected>ops</option>
             </select>
           </label>
+          <label>Modell (optional) <select id="t-model">${modelOpts}</select></label>
+          <label>Zeitplan (Cadence)</label>
+          <div class="row">
+            <select id="t-sched">
+              <option value="off">on-demand</option>
+              <option value="interval">alle N Minuten</option>
+              <option value="daily">täglich um HH:MM</option>
+            </select>
+            <input id="t-schedval" style="max-width:120px" placeholder="60 · 07:00" />
+          </div>
           <label>Schritte (Skills, Reihenfolge = Ausführung)</label>
           <div id="t-steps" class="steps"></div>
           <div class="row">
@@ -78,9 +91,15 @@
     document.getElementById("t-save").onclick = async () => {
       const title = document.getElementById("t-title").value.trim();
       if (!title) return alert("Titel fehlt");
+      const st = document.getElementById("t-sched").value;
+      const sv = document.getElementById("t-schedval").value.trim();
+      let schedule = null, cadence = "on-demand";
+      if (st === "interval" && sv) { schedule = { type: "interval", minutes: parseInt(sv, 10) || 60 }; cadence = "scheduled"; }
+      if (st === "daily" && sv) { schedule = { type: "daily", time: sv }; cadence = "scheduled"; }
       await fetch("/api/tasks", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, domain: document.getElementById("t-domain").value, steps }),
+        body: JSON.stringify({ title, domain: document.getElementById("t-domain").value, steps,
+          model: document.getElementById("t-model").value || null, schedule, cadence }),
       });
       close();
     };
@@ -157,6 +176,83 @@
       });
       close();
     };
+
+    await appendModelsAndUsers();
+  }
+
+  async function appendModelsAndUsers() {
+    const [me, models, agents] = await Promise.all([
+      fetch("/api/me").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [], running: [] })),
+      fetch("/api/agents").then((r) => r.json()).catch(() => []),
+    ]);
+    const gb = (n) => (n / 1e9).toFixed(1) + " GB";
+    const avail = (models.available || []).map((m) => `${esc(m.name)} (${gb(m.size)})`).join(" · ") || "—";
+    const running = (models.running || []).map((m) =>
+      `${esc(m.name)} · VRAM ${gb(m.size_vram || 0)}`).join(" · ") || "keine geladen";
+
+    let html = `<hr/><h4>Ollama-Modelle</h4>
+      <div class="hint2"><b>Verfügbar:</b> ${avail}</div>
+      <div class="hint2"><b>Geladen (RAM/VRAM):</b> ${running}</div>
+      <hr/><h4>Agenten-Modelle</h4>`;
+    const modelOpts = '<option value="">—</option>' +
+      (models.available || []).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
+    agents.forEach((a) => {
+      html += `<label>${esc(a.role)}
+        <input list="modellist" data-agent="${esc(a.role)}" class="ag-model" value="${esc(a.model)}"/></label>`;
+    });
+    html += `<datalist id="modellist">${modelOpts}</datalist>
+      <button class="btn" id="ag-save">Agenten-Modelle speichern</button>`;
+
+    if (me.role === "admin") {
+      html += `<hr/><h4>Benutzer</h4><div id="userlist" class="hint2">…</div>
+        <div class="row" style="margin-top:8px">
+          <input id="u-name" placeholder="benutzername" style="max-width:130px"/>
+          <input id="u-pw" type="password" placeholder="passwort (min.8)" style="max-width:150px"/>
+          <select id="u-role"><option value="user">user</option><option value="admin">admin</option></select>
+          <button class="btn" id="u-add">+ anlegen</button>
+        </div><div class="hint2" id="u-msg"></div>`;
+    }
+    bodyEl.insertAdjacentHTML("beforeend", html);
+
+    document.getElementById("ag-save").onclick = async () => {
+      for (const inp of bodyEl.querySelectorAll(".ag-model")) {
+        const a = agents.find((x) => x.role === inp.dataset.agent);
+        if (a && inp.value !== a.model) {
+          await fetch("/api/agents", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...a, model: inp.value }) });
+        }
+      }
+      alert("Agenten-Modelle gespeichert.");
+    };
+
+    if (me.role === "admin") {
+      const renderUsers = async () => {
+        const users = await fetch("/api/users").then((r) => r.json()).catch(() => []);
+        document.getElementById("userlist").innerHTML = users.map((u) =>
+          `${esc(u.username)} <span style="opacity:.6">(${u.role})</span>
+           <button class="lnk" data-del="${esc(u.username)}">entfernen</button>`).join("<br>");
+        document.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
+          if (!confirm(`Benutzer ${b.dataset.del} löschen?`)) return;
+          await fetch(`/api/users/${b.dataset.del}`, { method: "DELETE" });
+          renderUsers();
+        });
+      };
+      renderUsers();
+      document.getElementById("u-add").onclick = async () => {
+        const j = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: document.getElementById("u-name").value,
+            password: document.getElementById("u-pw").value, role: document.getElementById("u-role").value }) })
+          .then((r) => r.json()).catch(() => ({}));
+        const msg = document.getElementById("u-msg");
+        if (j.ok) {
+          msg.innerHTML = `Angelegt. <b>${esc(j.username)}</b> muss diesen QR/Secret in die Authenticator-App: ` +
+            `<code>${esc(j.secret)}</code>`;
+          if (window.VaultModal && j.qr_svg) { /* optional */ }
+          renderUsers();
+        } else { msg.textContent = "Fehler: " + (j.error || "?"); }
+      };
+    }
   }
 
   // ---- UPDATE -------------------------------------------------------------
