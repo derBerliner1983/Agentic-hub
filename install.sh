@@ -84,6 +84,11 @@ say "Basis-Tools"
 ensure_pkg curl curl || true
 ensure_pkg git git || true
 [[ "$PKG" == "apt" ]] && { $SUDO apt-get install -y ca-certificates >/dev/null 2>&1 && ok "ca-certificates ok" || true; }
+# mDNS: <hostname>.local im LAN erreichbar machen (umgeht IP/HSTS-Probleme)
+if [[ "$PKG" == "apt" ]]; then
+  $SUDO apt-get install -y avahi-daemon >/dev/null 2>&1 \
+    && { $SUDO systemctl enable --now avahi-daemon >/dev/null 2>&1; ok "mDNS aktiv → $(hostname).local"; } || true
+fi
 
 # ---------------------------------------------------------------------------
 # 2) Docker Engine + Compose-Plugin
@@ -227,7 +232,8 @@ fi
 # ---------------------------------------------------------------------------
 say "Fertig"
 ok "Modus: $MODE"
-info "HUD öffnen:  http://<server-ip>   → leitet automatisch auf HTTPS um"
+info "HUD öffnen (empfohlen, umgeht IP/HSTS-Probleme):  http://$(hostname).local"
+info "oder per IP:  http://<server-ip>   → beides leitet automatisch auf HTTPS um"
 info "(Zertifikatswarnung 1× akzeptieren – selbst-signiert)"
 info "Aktualisieren jederzeit mit:  ./update.sh"
 if have docker && ! groups "${USER:-$(id -un)}" 2>/dev/null | grep -q docker; then

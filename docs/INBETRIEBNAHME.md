@@ -95,10 +95,18 @@ ollama pull qwen2.5-coder     # für den Coder-Agenten / Code-Projekte
 ---
 
 ## 4. HUD öffnen & Login einrichten
-Im Browser vom Laptop/Tablet einfach die **IP** öffnen:
-- `http://<server-ip>` → leitet **automatisch auf HTTPS** um.
-- Beim ersten Mal zeigt der Browser eine **Zertifikatswarnung** (selbst-signiert):
-  „Erweitert" → „trotzdem fortfahren". Danach läuft alles über HTTPS (Mikro/Voice ok).
+Im Browser vom Laptop/Tablet öffnen – **am besten über den Hostnamen** (mDNS,
+umgeht IP-/HSTS-Probleme):
+- **`http://<hostname>.local`**  (z. B. `http://ai-server.local`)
+- oder per IP: `http://<server-ip>`
+- Beides leitet **automatisch auf HTTPS** um. Beim ersten Mal zeigt der Browser
+  eine **Zertifikatswarnung** (selbst-signiert): „Erweitert" → „trotzdem fortfahren".
+- In einem **Fritz!Box**-Netz geht oft auch direkt `http://<hostname>.fritz.box`.
+
+> **ERR_SSL_PROTOCOL_ERROR beim IP-Aufruf?** Der Browser hat einen alten HSTS-Eintrag
+> gespeichert. Entweder den **Hostnamen** benutzen (sauber) oder HSTS löschen:
+> `chrome://net-internals/#hsts` → unten bei „Delete domain security policies" die
+> IP eingeben → „Delete". (Inkognito-Fenster umgeht es zum Testen.)
 
 > Bei krummen Ports (falls 80/443 belegt sind) stehen sie in `instance/config.env`
 > (`HTTP_PORT`/`HTTPS_PORT`). Nach dem Ändern: `./update.sh`.
