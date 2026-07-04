@@ -128,20 +128,24 @@
           <option value="anthropic" ${sel("anthropic")}>Claude (Anthropic)</option>
           <option value="openai" ${sel("openai")}>OpenAI (ChatGPT)</option>
         </select></label>
-      <label>Ollama-URL</label>
-      <div class="row" style="align-items:center">
-        <input id="p-ollama" value="${esc(s.ollama_url)}" style="flex:1"/>
-        <button class="btn" id="p-test" type="button">Testen</button>
+      <div class="prov" data-prov="ollama">
+        <label>Ollama-URL</label>
+        <div class="row" style="align-items:center">
+          <input id="p-ollama" value="${esc(s.ollama_url)}" style="flex:1"/>
+          <button class="btn" id="p-test" type="button">Testen</button>
+        </div>
+        <div class="hint2" id="p-test-msg"></div>
       </div>
-      <div class="hint2" id="p-test-msg"></div>
-      <hr/>
-      <label>Anthropic API-Key ${s.anthropic_key_set ? "✓ gesetzt" : ""}
-        <input id="p-akey" type="password" placeholder="${s.anthropic_key_set ? "•••• (leer = behalten)" : "sk-ant-…"}"/></label>
-      <label>Claude-Modell <input id="p-amodel" value="${esc(s.anthropic_model)}"/></label>
-      <hr/>
-      <label>OpenAI API-Key ${s.openai_key_set ? "✓ gesetzt" : ""}
-        <input id="p-okey" type="password" placeholder="${s.openai_key_set ? "•••• (leer = behalten)" : "sk-…"}"/></label>
-      <label>OpenAI-Modell <input id="p-omodel" value="${esc(s.openai_model)}"/></label>
+      <div class="prov" data-prov="anthropic">
+        <label>Anthropic API-Key ${s.anthropic_key_set ? "✓ gesetzt" : ""}
+          <input id="p-akey" type="password" placeholder="${s.anthropic_key_set ? "•••• (leer = behalten)" : "sk-ant-…"}"/></label>
+        <label>Claude-Modell <input id="p-amodel" value="${esc(s.anthropic_model)}"/></label>
+      </div>
+      <div class="prov" data-prov="openai">
+        <label>OpenAI API-Key ${s.openai_key_set ? "✓ gesetzt" : ""}
+          <input id="p-okey" type="password" placeholder="${s.openai_key_set ? "•••• (leer = behalten)" : "sk-…"}"/></label>
+        <label>OpenAI-Modell <input id="p-omodel" value="${esc(s.openai_model)}"/></label>
+      </div>
       <button class="btn primary" id="p-save">Speichern</button>
       <div class="hint2">Keys werden lokal in instance/settings.json gespeichert (nicht in Git).</div>
       <hr/>
@@ -205,6 +209,18 @@
       close();
     };
 
+    // Nur den aktiven Provider zeigen; Ollama-Modelle nur bei Ollama
+    const applyProvVis = () => {
+      const act = document.getElementById("p-active").value;
+      bodyEl.querySelectorAll(".prov").forEach((el) =>
+        (el.style.display = el.dataset.prov === act ? "block" : "none"));
+      bodyEl.querySelectorAll(".ollama-only").forEach((el) =>
+        (el.style.display = act === "ollama" ? "" : "none"));
+    };
+    window._vaultApplyProvVis = applyProvVis;
+    document.getElementById("p-active").addEventListener("change", applyProvVis);
+    applyProvVis();
+
     document.getElementById("p-test").onclick = async () => {
       const msg = document.getElementById("p-test-msg");
       msg.textContent = "teste …";
@@ -235,43 +251,40 @@
        <button class="lnk" data-delmodel="${esc(m.name)}">löschen</button></div>`).join("")
       || '<div class="hint2">noch keine Modelle geladen</div>';
 
-    let html = `<hr/><h4>Ollama-Modelle
-        <span class="exec-badge ${reach ? "on" : ""}" style="margin-left:6px">
-          ${reach ? "ERREICHBAR" : "NICHT ERREICHBAR"}</span></h4>`;
-    if (!reach) {
-      html += `<div class="hint2">Ollama läuft nicht auf dem Host. Auf dem Server:
-        <code>curl -fsSL https://ollama.com/install.sh | sh</code>, dann Dienst auf
-        0.0.0.0 binden (siehe docs/INBETRIEBNAHME.md).</div>`;
-    }
     const SUGGEST = ["llama3.1:8b", "qwen2.5-coder:7b", "qwen2.5:7b", "llama3.2:3b",
                      "mistral", "phi3", "gemma2:9b"];
-    const noModels = !(models.available || []).length;
-    html += `<div class="row" style="margin-top:6px">
-        <input id="pull-name" placeholder="llama3.1 · qwen2.5-coder · hf.co/…" style="flex:1"/>
-        <button class="btn" id="pull-go">⤓ Modell laden</button></div>
-      <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell – wähle unten eins:" : ""}</div>
-      <div class="chips">${SUGGEST.map((m) =>
-        `<button class="chip" data-model="${m}">${m}</button>`).join("")}</div>
-      <div class="hint2">Auch von <b>HuggingFace</b> ladbar – gib z. B.
-        <code>hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF</code> ins Feld ein.</div>
-      <div style="margin-top:8px">${availList}</div>
-      <div class="hint2"><b>Geladen (RAM/VRAM):</b> ${running}</div>
+    const names = (models.available || []).map((m) => m.name);
+    const noModels = !names.length;
+    const uniq = (a) => [...new Set(a.filter(Boolean))];
+    const pullOpts = uniq([...SUGGEST, ...names]).map((m) => `<option value="${esc(m)}">`).join("");
+    const agOpts = (cur) => uniq([cur, ...names, ...SUGGEST])
+      .map((m) => `<option value="${esc(m)}" ${m === cur ? "selected" : ""}>${esc(m)}</option>`).join("");
+
+    let html = `<div class="ollama-only">
+      <hr/><h4>Ollama-Modelle <span class="exec-badge ${reach ? "on" : ""}" style="margin-left:6px">${reach ? "ERREICHBAR" : "OFFLINE"}</span></h4>
+      ${reach ? "" : '<div class="hint2">Ollama läuft nicht auf dem Host – siehe docs/INBETRIEBNAHME.md.</div>'}
+      <label>Modell laden (tippen oder Vorschlag wählen)</label>
+      <div class="row"><input id="pull-name" list="pullmodels" placeholder="z. B. llama3.1:8b · hf.co/…-GGUF" style="flex:1"/>
+        <button class="btn" id="pull-go">⤓ Laden</button></div>
+      <datalist id="pullmodels">${pullOpts}</datalist>
+      <div class="chips">${SUGGEST.map((m) => `<button class="chip" data-model="${m}">${m}</button>`).join("")}</div>
+      <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell geladen." : ""}</div>
+      <div class="hint2">Auch <b>HuggingFace</b>: <code>hf.co/&lt;user&gt;/&lt;repo&gt;-GGUF</code></div>
+      <div class="v-head" style="margin-top:12px">INSTALLIERTE MODELLE</div>
+      <div id="model-list">${availList}</div>
+      <div class="hint2"><b>Aktiv im Speicher (RAM/VRAM):</b> ${running}</div>
+      <hr/><h4>Agenten-Modelle</h4>
+      <div class="hint2">Welches Modell jede Rolle nutzt (wird bei Bedarf automatisch geladen).</div>
+      ${agents.map((a) => `<label>${esc(a.role)}
+        <select class="ag-model" data-agent="${esc(a.role)}">${agOpts(a.model)}</select></label>`).join("")}
+      <button class="btn" id="ag-save">Agenten-Modelle speichern</button>
+      </div>
       <hr/><h4>Sicherheit (Zwei-Faktor / MFA)</h4>
       <div class="hint2">Status: <b>${me.mfa ? "aktiv ✓" : "aus"}</b> ·
-        ${me.mfa ? "MFA wird beim Login auf neuen Geräten abgefragt."
-                 : "Ohne MFA reicht Benutzername + Passwort."}</div>
+        ${me.mfa ? "MFA wird beim Login auf neuen Geräten abgefragt." : "Ohne MFA reicht Benutzername + Passwort."}</div>
       <div id="mfa-area" style="margin-top:8px">
         ${me.mfa ? '<button class="btn" id="mfa-off">MFA deaktivieren</button>'
-                 : '<button class="btn" id="mfa-on">MFA aktivieren</button>'}</div>
-      <hr/><h4>Agenten-Modelle</h4>`;
-    const modelOpts = '<option value="">—</option>' +
-      (models.available || []).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
-    agents.forEach((a) => {
-      html += `<label>${esc(a.role)}
-        <input list="modellist" data-agent="${esc(a.role)}" class="ag-model" value="${esc(a.model)}"/></label>`;
-    });
-    html += `<datalist id="modellist">${modelOpts}</datalist>
-      <button class="btn" id="ag-save">Agenten-Modelle speichern</button>`;
+                 : '<button class="btn" id="mfa-on">MFA aktivieren</button>'}</div>`;
 
     if (me.role === "admin") {
       html += `<hr/><h4>Benutzer</h4><div id="userlist" class="hint2">…</div>
@@ -285,6 +298,20 @@
         <div id="auditlist" class="audit"></div>`;
     }
     bodyEl.insertAdjacentHTML("beforeend", html);
+    if (window._vaultApplyProvVis) window._vaultApplyProvVis();   // Ollama-Only ggf. ausblenden
+
+    // Lade-Fortschritt live im Fenster zeigen
+    if (window._vaultModelLog) window.removeEventListener("vault-log", window._vaultModelLog);
+    window._vaultModelLog = (e) => {
+      const m = e.detail || {};
+      if (m.type !== "model") return;
+      const msg = document.getElementById("pull-msg");
+      if (!msg) return;
+      if (m.state === "pulling") msg.textContent = `Lädt ${m.model} … ${m.pct != null ? m.pct + "%" : ""} ${m.status || ""}`;
+      else if (m.state === "ready") { msg.textContent = `✓ ${m.model} geladen`; if (!root.hidden) setTimeout(openSettings, 800); }
+      else if (m.state === "error") msg.textContent = `✗ ${m.error || "Fehler"}`;
+    };
+    window.addEventListener("vault-log", window._vaultModelLog);
 
     const pullGo = document.getElementById("pull-go");
     if (pullGo) pullGo.onclick = async () => {

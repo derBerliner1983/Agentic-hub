@@ -64,15 +64,27 @@ class OllamaProvider(Provider):
         if self._match(models, model):
             return True
         if bus:
-            await bus.publish({"type": "model", "state": "pulling", "model": model})
+            await bus.publish({"type": "model", "state": "pulling", "model": model, "pct": 0})
         try:
+            last_pct = -5
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", f"{self.base_url}/api/pull",
                                          json={"name": model}) as resp:
-                    async for _line in resp.aiter_lines():
-                        pass  # Fortschritt konsumieren
+                    async for line in resp.aiter_lines():
+                        if not line.strip() or not bus:
+                            continue
+                        try:
+                            d = json.loads(line)
+                        except Exception:  # noqa: BLE001
+                            continue
+                        total, done = d.get("total"), d.get("completed")
+                        pct = int(done / total * 100) if total else None
+                        if pct is not None and pct >= last_pct + 5:
+                            last_pct = pct
+                            await bus.publish({"type": "model", "state": "pulling", "model": model,
+                                               "pct": pct, "status": d.get("status", "")})
             if bus:
-                await bus.publish({"type": "model", "state": "ready", "model": model})
+                await bus.publish({"type": "model", "state": "ready", "model": model, "pct": 100})
             return True
         except Exception as exc:  # noqa: BLE001
             if bus:

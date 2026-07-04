@@ -27,26 +27,43 @@
     return; // Voice deaktiviert, HUD läuft normal weiter
   }
 
+  // Pegel-Balken aufbauen (echte Anzeige: klein bei Stille, groß bei lauter Stimme)
+  const BAR_COUNT = 30;
+  const bars = [];
+  if (barsEl) {
+    barsEl.innerHTML = "";
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const b = document.createElement("i");
+      barsEl.appendChild(b);
+      bars.push(b);
+    }
+  }
+  function meterLoop() {
+    if (analyser && recording) {
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      const bins = data.length;
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const v = (data[Math.floor((i / BAR_COUNT) * bins)] || 0) / 255;   // 0..1
+        bars[i].style.height = (5 + v * 95) + "%";
+      }
+    } else {
+      for (let i = 0; i < BAR_COUNT; i++) bars[i].style.height = "5%";
+    }
+    requestAnimationFrame(meterLoop);
+  }
+  if (bars.length) meterLoop();
+
   async function ensureStream() {
     if (stream) return stream;
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Pegel-Analyse für die Balken
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const src = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 64;
+    analyser.fftSize = 128;      // 64 Frequenz-Bins → feine Balken
+    analyser.smoothingTimeConstant = 0.6;
     src.connect(analyser);
     return stream;
-  }
-
-  function drawBars() {
-    if (!analyser) return;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
-    barsEl.style.opacity = String(0.4 + avg * 0.6);
-    barsEl.style.transform = `scaleY(${1 + avg * 1.6})`;
-    rafId = requestAnimationFrame(drawBars);
   }
 
   async function startRecording() {
@@ -67,14 +84,11 @@
     mediaRecorder.start();
     setState("MIC.LISTENING");
     textEl.textContent = "";
-    drawBars();
   }
 
   function stopRecording(cancel) {
     if (!recording) return;
     recording = false;
-    if (rafId) cancelAnimationFrame(rafId);
-    barsEl.style.transform = ""; barsEl.style.opacity = "";
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder._cancel = !!cancel;
       mediaRecorder.stop();
