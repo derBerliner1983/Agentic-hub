@@ -48,16 +48,39 @@ sudo systemctl daemon-reload && sudo systemctl enable --now ollama
 Der Ollama-Installer erkennt AMD und richtet ROCm ein. Prüfen:
 ```bash
 ollama ps            # zeigt geladene Modelle
-journalctl -u ollama | grep -i rocm   # ROCm erkannt?
+journalctl -u ollama | grep -i -E 'rocm|gfx|gpu'   # GPU erkannt?
 ```
-Falls die GPU nicht erkannt wird (ältere Karte), hilft oft ein Override – ersetze
-`11.0.0` durch deine gfx-Version (siehe `rocminfo | grep gfx`):
+Falls die GPU nicht erkannt wird, hilft oft ein Override – ersetze `11.0.0` durch
+deine gfx-Version (siehe `rocminfo | grep gfx`):
 ```bash
 printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\nEnvironment="HSA_OVERRIDE_GFX_VERSION=11.0.0"\n' \
   | sudo tee /etc/systemd/system/ollama.service.d/10-vault.conf
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 > Auch ohne GPU läuft alles – dann rechnet Ollama auf der CPU (bei 128 GB RAM ok, nur langsamer).
+
+### Speziell: ACEMAGIC M1A Pro+ (Ryzen AI Max+ 395 / Radeon 8060S, „Strix Halo")
+Die iGPU ist **RDNA 3.5 = `gfx1151`**. Support ist neu – **aktuelles Ollama** verwenden
+(Installer neu ausführen aktualisiert es). Wichtig:
+
+1. **Unified Memory nutzen (VRAM/GTT).** GPU und CPU teilen sich die 128 GB.
+   - Im **BIOS** die „UMA Frame Buffer / VGA Memory" möglichst groß setzen (z. B. 32–64 GB),
+     falls verfügbar. Rest wird als GTT dynamisch zugeteilt.
+   - So kann die GPU auch große Modelle (z. B. 70B quantisiert) laden.
+2. **GPU-Erkennung** prüfen mit `ollama ps` (Spalte „PROCESSOR" sollte GPU zeigen) und
+   `journalctl -u ollama | grep -i gfx`.
+3. **Falls die GPU nicht genutzt wird**, den Override setzen (für gfx1151 gängig):
+   ```bash
+   printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\nEnvironment="HSA_OVERRIDE_GFX_VERSION=11.0.0"\n' \
+     | sudo tee /etc/systemd/system/ollama.service.d/10-vault.conf
+   sudo systemctl daemon-reload && sudo systemctl restart ollama
+   ```
+   Bringt das nichts, ist der **CPU-Modus** auf diesem 16-Kern-Zen5 mit 128 GB trotzdem
+   sehr brauchbar – einfach ohne Override weiterlaufen lassen.
+4. Der Chip hat zusätzlich eine **NPU (XDNA, ~126 TOPS)** – die nutzt Ollama (noch) nicht;
+   Inferenz läuft über GPU (ROCm) oder CPU. Kein Problem, nur zur Einordnung.
+5. **Gute Startmodelle** für diese Maschine:
+   `llama3.1:8b` (schnell), `qwen2.5-coder:14b` (Code), bei Bedarf größere Q4-Modelle.
 
 ---
 
