@@ -121,6 +121,10 @@ Danach einloggen. Sobald Ollama ein Modell hat, wechselt oben `LINK · OFFLINE` 
 ```bash
 ./update.sh          # oder im HUD: ↻ oben rechts
 ```
+`update.sh` aktualisiert **Code + Container UND Ollama** (letzteres nur, wenn schon
+installiert; deine `0.0.0.0`-Bindung/Override bleibt erhalten).
+- Ollama-Update überspringen: `./update.sh --no-ollama`
+- Ollama einzeln aktualisieren: `./scripts/setup-ollama.sh`
 
 ---
 

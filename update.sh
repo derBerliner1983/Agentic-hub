@@ -6,8 +6,9 @@
 # Fragt NICHTS – der Betriebsmodus kommt aus instance/config.env (Erstinstallation).
 #
 # Nutzung:
-#   ./update.sh            # auf Remote-Stand des aktuellen Branches aktualisieren
-#   ./update.sh --no-build # nur Code ziehen, Container nicht neu bauen
+#   ./update.sh             # Code + Container + Ollama aktualisieren
+#   ./update.sh --no-build  # nur Code ziehen, Container nicht neu bauen
+#   ./update.sh --no-ollama # Ollama-Update überspringen
 #
 set -euo pipefail
 
@@ -24,8 +25,11 @@ fi
 # shellcheck disable=SC1090
 source "$CONFIG"
 
-NO_BUILD=0
-[[ "${1:-}" == "--no-build" ]] && NO_BUILD=1
+NO_BUILD=0; NO_OLLAMA=0
+for a in "$@"; do
+  [[ "$a" == "--no-build" ]] && NO_BUILD=1
+  [[ "$a" == "--no-ollama" ]] && NO_OLLAMA=1
+done
 
 echo "== Git-Update (Modus: ${MODE:-headless}) =="
 
@@ -54,6 +58,12 @@ if [[ "$NO_BUILD" -eq 0 ]]; then
   else
     echo "  • Kein docker-compose.yml / Docker – App-Neustart übersprungen."
   fi
+fi
+
+# Ollama aktualisieren (nur wenn schon installiert), Bindung/Override bleiben erhalten
+if [[ "$NO_OLLAMA" -eq 0 ]]; then
+  echo "== Ollama-Update =="
+  bash "$REPO_DIR/scripts/setup-ollama.sh" --update-only || echo "  • Ollama-Update übersprungen."
 fi
 
 # Kiosk-Unit bei Bedarf aktualisieren (ohne Rückfrage, Modus ist bekannt)
