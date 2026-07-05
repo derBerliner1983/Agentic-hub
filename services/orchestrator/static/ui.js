@@ -932,7 +932,14 @@
       try { ver = await fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).then((j) => j.commit); }
       catch (_) { up = false; }
       if (!up) { sawDown = true; elEl.textContent = `Container wird neu gebaut & gestartet … ${secs()} s`; }
-      else if (!sawDown) { elEl.textContent = `Update läuft … ${secs()} s (baut Container)`; }
+      else if (!sawDown) { elEl.textContent = `Update läuft … ${secs()} s`; }
+      // Host-Updater nicht aktiv? (Log bleibt beim Warte-Text, nichts passiert)
+      const waiting = (logEl.textContent || "").includes("Warte auf den Host-Updater")
+        && !(logEl.textContent || "").includes("Git-Update");
+      if (secs() > 25 && !sawDown && waiting && !finEl.innerHTML) {
+        finEl.innerHTML = `<div class="hint2" style="margin-top:8px;color:#f59e0b">Der Host-Updater ist noch nicht aktiv.
+          Führe einmal im Terminal <code>./update.sh</code> aus (richtet ihn ein) – danach klappt der Button.</div>`;
+      }
       if (sawDown && up && ver) finish(ver);        // war weg, ist wieder da → fertig
       if (secs() > 180 && !finished) finish(ver);   // Sicherheits-Fallback
     };

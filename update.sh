@@ -25,6 +25,12 @@ fi
 # shellcheck disable=SC1090
 source "$CONFIG"
 
+# Ausgabe zusätzlich nach instance/update.log spiegeln (fürs HUD-Fortschrittsfenster)
+mkdir -p "$INSTANCE_DIR"
+exec > >(tee "$INSTANCE_DIR/update.log") 2>&1
+# ggf. Update-Anforderung aus dem HUD abräumen (sonst triggert der Pfad-Dienst erneut)
+rm -f "$INSTANCE_DIR/update.request" 2>/dev/null || true
+
 NO_BUILD=0; NO_OLLAMA=0
 for a in "$@"; do
   [[ "$a" == "--no-build" ]] && NO_BUILD=1
@@ -60,11 +66,16 @@ if [[ "$NO_BUILD" -eq 0 ]]; then
     # Caddy neu erstellen, damit ein geänderter Caddyfile wirklich greift
     ( cd "$REPO_DIR" && HTTP_PORT="${HTTP_PORT:-80}" HTTPS_PORT="${HTTPS_PORT:-443}" \
         BIND_ADDR="${BIND_ADDR:-0.0.0.0}" docker compose up -d --force-recreate caddy )
+    # Gebauten Stand festhalten – damit das HUD echt erkennt, was LÄUFT (nicht nur was in git steht)
+    git -C "$REPO_DIR" rev-parse --short HEAD > "$INSTANCE_DIR/built_commit" 2>/dev/null || true
     echo "  ✓ Container neu gebaut & rollend neu gestartet (Live-Update)."
   else
     echo "  • Kein docker-compose.yml / Docker – App-Neustart übersprungen."
   fi
 fi
+
+# Host-Updater sicherstellen (damit der Update-Button im HUD funktioniert)
+bash "$REPO_DIR/scripts/setup-updater.sh" >/dev/null 2>&1 || true
 
 # Ollama aktualisieren (nur wenn schon installiert), Bindung/Override bleiben erhalten
 if [[ "$NO_OLLAMA" -eq 0 ]]; then

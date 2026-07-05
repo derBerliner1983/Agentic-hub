@@ -254,6 +254,9 @@ fi
 # ---------------------------------------------------------------------------
 # Fertig
 # ---------------------------------------------------------------------------
+# Host-Updater einrichten (Update-Button im HUD funktioniert dann)
+bash "$REPO_DIR/scripts/setup-updater.sh" || true
+
 say "Fertig"
 ok "Modus: $MODE"
 info "HUD öffnen (empfohlen, umgeht IP/HSTS-Probleme):  http://$(hostname).local"

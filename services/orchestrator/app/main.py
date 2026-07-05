@@ -808,11 +808,11 @@ async def api_update_check(request: Request) -> JSONResponse:
                 timeout=10).decode().strip()
             subprocess.run(["git", "-C", REPO_DIR, "fetch", "--quiet", "origin", branch],
                            timeout=20, check=False)
+            # Basis = der LAUFENDE (gebaute) Stand, nicht nur der git-HEAD.
+            cur = _running_commit()
+            base = cur if cur and cur != "?" else "HEAD"
             behind = subprocess.check_output(
-                ["git", "-C", REPO_DIR, "rev-list", "--count", f"HEAD..origin/{branch}"],
-                timeout=10).decode().strip()
-            cur = subprocess.check_output(
-                ["git", "-C", REPO_DIR, "rev-parse", "--short", "HEAD"],
+                ["git", "-C", REPO_DIR, "rev-list", "--count", f"{base}..origin/{branch}"],
                 timeout=10).decode().strip()
             return {"behind": int(behind or 0), "branch": branch, "current": cur}
         except Exception as exc:  # noqa: BLE001
@@ -821,17 +821,31 @@ async def api_update_check(request: Request) -> JSONResponse:
     return JSONResponse(await asyncio.to_thread(_check))
 
 
-_UPDATE_LOG = os.path.join(os.environ.get("STORE_DIR", "/instance"), "update.log")
+_STORE = os.environ.get("STORE_DIR", "/instance")
+_UPDATE_LOG = os.path.join(_STORE, "update.log")
+_UPDATE_REQ = os.path.join(_STORE, "update.request")
+_BUILT_COMMIT = os.path.join(_STORE, "built_commit")
+
+
+def _running_commit() -> str:
+    """Commit, mit dem die LAUFENDE App gebaut wurde (nicht nur der git-Stand)."""
+    try:
+        with open(_BUILT_COMMIT) as f:
+            c = f.read().strip()
+            if c:
+                return c
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return subprocess.check_output(
+            ["git", "-C", REPO_DIR, "rev-parse", "--short", "HEAD"], timeout=5).decode().strip()
+    except Exception:  # noqa: BLE001
+        return "?"
 
 
 @app.get("/api/version")
 async def api_version() -> JSONResponse:
-    try:
-        commit = subprocess.check_output(
-            ["git", "-C", REPO_DIR, "rev-parse", "--short", "HEAD"], timeout=5).decode().strip()
-    except Exception:  # noqa: BLE001
-        commit = "?"
-    return JSONResponse({"commit": commit})
+    return JSONResponse({"commit": _running_commit()})
 
 
 @app.get("/api/system/update/log")
@@ -851,21 +865,18 @@ async def api_update_log(request: Request) -> JSONResponse:
 async def api_system_update(request: Request) -> JSONResponse:
     if not _require_admin(request):
         return JSONResponse({"error": "nur Admin"}, status_code=403)
-    script = os.path.join(REPO_DIR, "update.sh")
-    if not os.path.isfile(script):
-        return JSONResponse({"ok": False, "error": f"update.sh nicht gefunden ({script}). "
-                             "Repo muss als /repo gemountet sein."}, status_code=503)
+    # `docker compose` kann NICHT sinnvoll aus dem Container laufen (Bind-Mount-Pfade).
+    # Darum stoßen wir den Host-Updater an: Anforderungs-Datei schreiben, der
+    # systemd-Pfad-Dienst (scripts/setup-updater.sh) startet update.sh am Host.
     try:
-        # Ausgabe in instance/update.log (überlebt Container-Neustart → Fortschritt sichtbar)
-        logf = open(_UPDATE_LOG, "w")
-        logf.write("== Update gestartet ==\n")
-        logf.flush()
-        subprocess.Popen(["bash", script], cwd=REPO_DIR, stdout=logf,
-                         stderr=subprocess.STDOUT)
+        with open(_UPDATE_LOG, "w") as f:
+            f.write("== Update angefordert ==\nWarte auf den Host-Updater …\n")
+        with open(_UPDATE_REQ, "w") as f:
+            f.write("update")
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     audit.log(getattr(request.state, "username", "-"), "system_update", "")
-    return JSONResponse({"ok": True, "note": "Update gestartet – Container startet gleich neu."})
+    return JSONResponse({"ok": True, "note": "Update angefordert – der Host-Updater startet gleich."})
 
 
 # ---- Voice -----------------------------------------------------------------
