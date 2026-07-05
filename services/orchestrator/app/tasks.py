@@ -111,7 +111,7 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
         await bus.publish({"type": "task", "id": tid, "title": title,
                            "domain": domain, "state": state, **extra})
 
-    await emit("queued")
+    await emit("queued", q=prompt)   # volle Frage für den Chat-Verlauf
     health = await provider.health()
     if not health["connected"]:
         await emit("error", error=health.get("error") or "kein Provider verbunden")

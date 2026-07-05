@@ -76,13 +76,45 @@
     }
   }
 
+  // ---- Chat-Verlauf (rechts unter dem Command Deck) ----------------------
+  const chatlog = document.getElementById("chatlog");
+  const _chat = {};   // task-id → {botEl, text, tools}
+  function chatEnsure(id, question) {
+    if (_chat[id]) return _chat[id];
+    const empty = chatlog.querySelector(".chat-empty");
+    if (empty) empty.remove();
+    const wrap = document.createElement("div");
+    wrap.className = "chat-entry";
+    const u = document.createElement("div");
+    u.className = "chat-u"; u.textContent = question || "…";
+    const b = document.createElement("div");
+    b.className = "chat-b"; b.textContent = "…";
+    wrap.appendChild(u); wrap.appendChild(b);
+    chatlog.appendChild(wrap);
+    while (chatlog.childElementCount > 30) chatlog.removeChild(chatlog.firstChild);
+    _chat[id] = { botEl: b, text: "", tools: [] };
+    chatlog.scrollTop = chatlog.scrollHeight;
+    return _chat[id];
+  }
+  function chatUpdate(id, msg) {
+    const e = _chat[id]; if (!e) return;
+    if (msg.state === "tool") { e.tools.push(msg.tool); }
+    const toolLine = e.tools.length ? "🔧 " + e.tools.join(", ") + "\n" : "";
+    e.botEl.textContent = toolLine + (e.text || (msg.state === "done" ? (msg.preview || "") : "…"));
+    chatlog.scrollTop = chatlog.scrollHeight;
+  }
+
   const _stream = {};   // task-id → akkumulierter Text (Live-Streaming)
   function handleTask(msg) {
+    if (msg.state === "queued") chatEnsure(msg.id, msg.q || msg.title);
     taskcard.hidden = false;
     taskTitle.textContent = (msg.title || msg.id || "").toUpperCase();
     if (msg.state === "stream") {
       _stream[msg.id] = (_stream[msg.id] || "") + (msg.chunk || "");
       taskState.textContent = "✎ " + _stream[msg.id].slice(-140).replace(/\s+/g, " ");
+      const ce = _chat[msg.id] || chatEnsure(msg.id, msg.title);
+      ce.text = _stream[msg.id];
+      chatUpdate(msg.id, msg);
       activeTasks = Math.max(activeTasks, 1);
       if (msg.domain) brain.setActiveDomain(msg.domain);
       applyState();
@@ -92,6 +124,7 @@
                          vault_search: "📓 durchsucht Vault …" };
     if (msg.state === "tool") {
       taskState.textContent = toolLabels[msg.tool] || ("🔧 nutzt " + (msg.tool || "Tool") + " …");
+      chatEnsure(msg.id, msg.title); chatUpdate(msg.id, msg);
       activeTasks = Math.max(activeTasks, 1);
       brain.setActiveDomain("research");
       applyState();
@@ -108,6 +141,11 @@
       if (msg.domain) brain.setActiveDomain(msg.domain);   // Hirn-Segment aktivieren
     }
     if (msg.state === "done" || msg.state === "error") {
+      if (_chat[msg.id]) {
+        if (msg.state === "error") _chat[msg.id].botEl.textContent = "⚠ " + (msg.error || "Fehler");
+        else chatUpdate(msg.id, msg);
+        delete _chat[msg.id];
+      }
       delete _stream[msg.id];
       activeTasks = Math.max(0, activeTasks - 1);
       if (btn) btn.classList.remove("running");
