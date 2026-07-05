@@ -19,6 +19,10 @@ def list_mcp() -> list[dict]:
     return store.load("mcp.json", []) or []
 
 
+def get_mcp(mcp_id: str) -> dict | None:
+    return next((m for m in list_mcp() if m["id"] == mcp_id), None)
+
+
 def save_mcp(entry: dict) -> dict:
     items = list_mcp()
     entry = {

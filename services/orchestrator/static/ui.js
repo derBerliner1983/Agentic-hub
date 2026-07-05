@@ -317,7 +317,8 @@
           <div class="m-sub">${esc(s2.description || s2.id)}</div></div></div>`).join("")
       || '<div class="hint2">keine Skills</div>';
     const mcpRows = mcps.map((m) => `<div class="mgmt-row">
-        <div><div class="m-title">${esc(m.name)} ${m.enabled ? "" : "· <i>aus</i>"}</div>
+        <div><div class="m-title">${esc(m.name)} ${m.enabled ? "" : "· <i>aus</i>"}
+          ${m.tools ? `<span style="color:var(--accent)">· ${m.tools} Tool(s)</span>` : '<span style="opacity:.5">· keine Tools erkannt</span>'}</div>
           <div class="m-sub">${esc(m.transport)} · ${esc(m.target || "")}</div></div>
         <span class="board-spacer"></span>
         <button class="lnk" data-mcpdel="${esc(m.id)}">entfernen</button></div>`).join("")

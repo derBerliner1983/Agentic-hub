@@ -76,6 +76,12 @@ async def _startup() -> None:
     app.state.poller = asyncio.create_task(_status_poller())
     app.state.worker = asyncio.create_task(worker_mod.worker_loop(bus))
     app.state.scheduler = asyncio.create_task(scheduler_mod.scheduler_loop(bus))
+    # MCP-Werkzeuge im Hintergrund laden (blockiert den Start nicht)
+    try:
+        from . import mcp_client
+        asyncio.create_task(mcp_client.refresh_mcp_tools())
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @app.on_event("shutdown")
@@ -516,7 +522,15 @@ async def api_model_active(request: Request, data: dict = Body(...)) -> JSONResp
 # ---- MCP-Server-Registry ---------------------------------------------------
 @app.get("/api/mcp")
 async def api_mcp_list() -> JSONResponse:
-    return JSONResponse(mcp_mod.list_mcp())
+    servers = mcp_mod.list_mcp()
+    try:
+        from . import mcp_client
+        counts = mcp_client.server_tool_counts()
+    except Exception:  # noqa: BLE001
+        counts = {}
+    for s in servers:
+        s["tools"] = counts.get(s["id"], 0)
+    return JSONResponse(servers)
 
 
 @app.post("/api/mcp")
@@ -526,6 +540,8 @@ async def api_mcp_save(request: Request, entry: dict = Body(...)) -> JSONRespons
     res = mcp_mod.save_mcp(entry)
     audit.log(getattr(request.state, "username", "-"), "mcp_save", res["id"])
     try:
+        from . import mcp_client
+        await mcp_client.refresh_mcp_tools()   # Tools des neuen Servers laden
         await bus.publish(await _status_snapshot())   # zählt zum Wissen → Gehirn wächst
     except Exception:  # noqa: BLE001
         pass
@@ -538,6 +554,8 @@ async def api_mcp_delete(request: Request, mcp_id: str) -> JSONResponse:
         return JSONResponse({"error": "nur Admin"}, status_code=403)
     ok = mcp_mod.delete_mcp(mcp_id)
     try:
+        from . import mcp_client
+        await mcp_client.refresh_mcp_tools()
         await bus.publish(await _status_snapshot())
     except Exception:  # noqa: BLE001
         pass
