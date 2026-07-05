@@ -593,20 +593,39 @@
     alert(r.ok ? "Update gestartet – der Server startet gleich neu." : ("Update nicht möglich: " + (r.error || "?")));
   }
 
-  // ---- Projekt-Launcher ---------------------------------------------------
+  // ---- Eingabe: Einzelaufgabe ODER Projekt --------------------------------
   function initProject() {
     const input = document.getElementById("project-input");
     const go = document.getElementById("project-go");
+    const toggle = document.getElementById("mode-toggle");
+    let mode = "task";   // "task" = eine Antwort · "project" = Agent plant & delegiert
+
+    const applyMode = () => {
+      toggle.querySelectorAll("button").forEach((b) =>
+        b.classList.toggle("active", b.dataset.mode === mode));
+      input.placeholder = mode === "task"
+        ? "Aufgabe eingeben (eine Antwort)…"
+        : "Projekt-Ziel (Agent plant, holt Spezial-Agenten, prüft)…";
+    };
+    toggle.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]");
+      if (!b) return;
+      mode = b.dataset.mode; applyMode();
+    });
+    applyMode();
+
     const run = async () => {
-      const goal = input.value.trim();
-      if (!goal) return;
+      const text = input.value.trim();
+      if (!text) return;
       go.disabled = true;
-      await fetch("/api/projects/run", {
+      const url = mode === "project" ? "/api/projects/run" : "/api/tasks/ask";
+      const payload = mode === "project" ? { goal: text } : { prompt: text };
+      await fetch(url, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal }),
+        body: JSON.stringify(payload),
       }).catch(() => {});
       input.value = "";
-      setTimeout(() => (go.disabled = false), 1500);
+      setTimeout(() => (go.disabled = false), 1200);
     };
     go.addEventListener("click", run);
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });

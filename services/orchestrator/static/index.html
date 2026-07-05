@@ -63,11 +63,15 @@
         <div class="taskcard-title" id="taskcard-title">—</div>
         <div class="taskcard-state" id="taskcard-state">—</div>
       </div>
-      <!-- Projekt-Launcher: der Agent plant & delegiert autonom -->
+      <!-- Eingabe: einzelne Aufgabe ODER Projekt (umschaltbar) -->
       <div class="project-bar">
+        <div class="mode-toggle" id="mode-toggle">
+          <button data-mode="task" class="active" title="Eine schnelle Antwort">Aufgabe</button>
+          <button data-mode="project" title="Der Agent plant & delegiert">Projekt</button>
+        </div>
         <input id="project-input" type="text"
-               placeholder="Projekt-Ziel an den Agenten geben (er plant, holt Spezial-Agenten, prüft)…" />
-        <button id="project-go">▶ PLAN &amp; RUN</button>
+               placeholder="Aufgabe eingeben (eine Antwort)…" />
+        <button id="project-go">▶ START</button>
       </div>
     </main>
 

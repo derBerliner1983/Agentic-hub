@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 
 from .events import EventBus
-from .tasks import run_task, task_list, get_task, save_task, delete_task
+from .tasks import run_task, run_adhoc, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
 from . import (auth, audit, voice, executor, backup as backup_mod, board as board_mod,
                worker as worker_mod, settings as settings_mod, skills as skills_mod,
@@ -353,6 +353,17 @@ async def api_run_task(request: Request, task_id: str) -> JSONResponse:
     audit.log(getattr(request.state, "username", "-"), "task_run", task_id)
     asyncio.create_task(run_task(task_id, provider(), bus))
     return JSONResponse({"ok": True, "task": task_id})
+
+
+@app.post("/api/tasks/ask")
+async def api_ask(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Einzelne Ad-hoc-Aufgabe (ein Prompt → eine Antwort), im Gegensatz zum Projekt."""
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return JSONResponse({"ok": False, "error": "kein Text"}, status_code=400)
+    audit.log(getattr(request.state, "username", "-"), "ask", prompt[:80])
+    asyncio.create_task(run_adhoc(prompt, provider(), bus))
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/audit")
@@ -766,9 +777,9 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "text": text, "task": task_id})
-    # Kein vordefinierter Kurzbefehl → freien Sprachbefehl als Projekt ausführen
+    # Kein vordefinierter Kurzbefehl → freien Sprachbefehl als Einzelaufgabe beantworten
     if text and len(text.strip()) >= 3:
-        asyncio.create_task(run_project(text.strip(), settings_mod.ollama_provider(), bus))
+        asyncio.create_task(run_adhoc(text.strip(), provider(), bus))
         return JSONResponse({"ok": True, "text": text, "task": None, "project": True})
     return JSONResponse({"ok": True, "text": text, "task": None})
 

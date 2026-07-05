@@ -141,6 +141,13 @@ body {
   font-size: 12px; font-weight: 600; padding: 0 18px; border-radius: var(--r-pill); cursor: pointer; }
 .project-bar button:hover { background: var(--accent-strong); }
 .project-bar button:disabled { opacity: .45; cursor: wait; }
+/* Umschalter Aufgabe/Projekt (segmentiert, nicht in Akzentfarbe) */
+.mode-toggle { display: flex; gap: 2px; padding: 3px; background: var(--sunken);
+  border: 1px solid var(--border); border-radius: var(--r-pill); flex-shrink: 0; }
+.mode-toggle button { background: transparent; color: var(--muted); font-size: 11px; font-weight: 600;
+  padding: 0 12px; border-radius: var(--r-pill); }
+.mode-toggle button:hover { background: transparent; color: var(--fg); }
+.mode-toggle button.active { background: var(--accent); color: var(--accent-ink); }
 
 /* ── Command Deck ───────────────────────── */
 .deck { border-left: 1px solid var(--border); padding: 20px 18px; display: flex; flex-direction: column;

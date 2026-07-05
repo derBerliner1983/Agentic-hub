@@ -100,6 +100,49 @@ def _resolve_step_prompt(step: dict) -> str:
     return step.get("prompt", "")
 
 
+async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
+                    domain: str = "inbox") -> None:
+    """Einzelne Ad-hoc-Aufgabe: ein freier Prompt → eine Antwort (gestreamt) →
+    Ergebnis in vault/runs. Kein gespeicherter Task nötig (Schnell-Eingabe)."""
+    title = prompt.strip()[:48] + ("…" if len(prompt.strip()) > 48 else "")
+    tid = "adhoc"
+
+    async def emit(state: str, **extra):
+        await bus.publish({"type": "task", "id": tid, "title": title,
+                           "domain": domain, "state": state, **extra})
+
+    await emit("queued")
+    health = await provider.health()
+    if not health["connected"]:
+        await emit("error", error=health.get("error") or "kein Provider verbunden")
+        return
+
+    await emit("thinking")
+    result = ""
+    try:
+        async for chunk in provider.generate_stream(prompt):
+            result += chunk
+            await emit("stream", chunk=chunk, step=1, steps=1)
+    except Exception as exc:  # noqa: BLE001
+        await emit("error", error=str(exc))
+        return
+
+    await emit("writing")
+    stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    runs_dir = VAULT_DIR / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    out_path = runs_dir / f"{stamp}-adhoc.md"
+    try:
+        out_path.write_text(
+            f"# {title}\n\n- Ad-hoc-Aufgabe · {dt.datetime.now().isoformat(timespec='seconds')}\n\n"
+            f"**Frage:** {prompt}\n\n---\n\n{result}\n", encoding="utf-8")
+        rel = str(out_path).replace(str(VAULT_DIR), "vault")
+    except Exception as exc:  # noqa: BLE001
+        await emit("error", error=f"Schreiben fehlgeschlagen: {exc}")
+        return
+    await emit("done", output_path=rel, preview=result[:280])
+
+
 async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:
     task = get_task(task_id)
     if not task:
