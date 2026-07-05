@@ -68,10 +68,12 @@
 
   async function startRecording() {
     if (recording) return;
+    if (window._vaultPauseHF) window._vaultPauseHF();   // Freihand kurz pausieren (Mikro frei)
     try {
       await ensureStream();
     } catch (_) {
       setState("MIC.DENIED"); setNote("Mikrofon-Zugriff verweigert.");
+      if (window._vaultResumeHF) window._vaultResumeHF();
       return;
     }
     recording = true;
@@ -96,6 +98,7 @@
   }
 
   async function onStop() {
+    if (window._vaultResumeHF) setTimeout(window._vaultResumeHF, 400);   // Freihand wieder an
     if (mediaRecorder._cancel) { setState("TTS.STANDBY"); return; }
     setState("STT.THINKING");
     const blob = new Blob(chunks, { type: "audio/webm" });
@@ -189,24 +192,52 @@
         }
       }
     };
-    recog.onerror = () => {};
+    recog.onerror = (e) => {
+      // Ohne Mikro-Erlaubnis/Nutzer-Geste → nicht endlos neu starten, Button anbieten
+      if (e && (e.error === "not-allowed" || e.error === "service-not-allowed")) {
+        handsFree = false;
+        if (hfBtn) hfBtn.classList.remove("on");
+        setNote("Freihand: bitte Mikro erlauben und 👂 antippen.");
+      }
+    };
     recog.onend = () => { if (handsFree) { try { recog.start(); } catch (_) {} } };
     try { recog.start(); return true; } catch (_) { return false; }
   }
   function stopHandsFree() { handsFree = false; if (recog) { try { recog.stop(); } catch (_) {} } }
 
+  // Freihand während Push-to-talk pausieren (Mikro nicht doppelt belegen)
+  let _hfPaused = false;
+  window._vaultPauseHF = () => { if (handsFree) { _hfPaused = true; handsFree = false; if (recog) { try { recog.stop(); } catch (_) {} } } };
+  window._vaultResumeHF = () => { if (_hfPaused) { _hfPaused = false; enableHandsFree(); } };
+
   const hfBtn = document.getElementById("handsfree-btn");
+  function enableHandsFree() {
+    if (!SR) { setNote("Freihand braucht Chrome/Edge (Web-Speech)."); return false; }
+    if (!wakeWord) { setNote("Erst ein Weckwort in den Einstellungen setzen."); return false; }
+    handsFree = true;
+    if (startHandsFree()) {
+      if (hfBtn) hfBtn.classList.add("on");
+      setNote(`Freihand an – sag „${wakeWord} …“`);
+      return true;
+    }
+    handsFree = false;
+    setNote("Freihand: Mikro erlauben und 👂 antippen.");
+    return false;
+  }
   if (hfBtn) {
     hfBtn.addEventListener("click", async () => {
       if (handsFree) { stopHandsFree(); hfBtn.classList.remove("on"); setNote("Freihand aus."); return; }
       await loadWake();
-      if (!SR) { setNote("Freihand braucht Chrome/Edge (Web-Speech)."); return; }
-      if (!wakeWord) { setNote("Erst ein Weckwort in den Einstellungen setzen."); return; }
-      handsFree = true;
-      if (startHandsFree()) { hfBtn.classList.add("on"); setNote(`Freihand an – sag „${wakeWord} …“`); }
-      else { handsFree = false; setNote("Freihand konnte nicht starten."); }
+      enableHandsFree();
     });
   }
+
+  // Ist ein Weckwort gesetzt → Freihand automatisch starten (kein Space/Klick nötig).
+  // Klappt der Autostart nicht (Mikro-Erlaubnis fehlt), reicht ein Tipp auf 👂.
+  (async function autoHandsFree() {
+    await loadWake();
+    if (SR && wakeWord) enableHandsFree();
+  })();
 
   setState("TTS.STANDBY");
 })();
