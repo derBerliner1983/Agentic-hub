@@ -43,9 +43,15 @@
       const data = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(data);
       const bins = data.length;
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const v = (data[Math.floor((i / BAR_COUNT) * bins)] || 0) / 255;   // 0..1
-        bars[i].style.height = (5 + v * 95) + "%";
+      // Von der Mitte nach außen: Mitte = tiefe/laute Frequenzen, Ränder = hohe.
+      const half = BAR_COUNT / 2;
+      for (let i = 0; i < half; i++) {
+        const v = (data[Math.floor((i / half) * bins)] || 0) / 255;   // 0..1
+        const h = (5 + v * 95) + "%";
+        const r = Math.floor(half + i);        // rechte Hälfte
+        const l = Math.floor(half - 1 - i);    // linke Hälfte (gespiegelt)
+        if (bars[r]) bars[r].style.height = h;
+        if (bars[l]) bars[l].style.height = h;
       }
     } else {
       for (let i = 0; i < BAR_COUNT; i++) bars[i].style.height = "5%";

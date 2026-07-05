@@ -423,13 +423,20 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 
 /* ── Responsive: Tablet ─────────────────── */
 @media (max-width: 1100px) {
-  #app { grid-template-columns: 1fr; grid-template-rows: auto auto 44vh auto; }
+  /* Gestapeltes Layout: Seite darf scrollen, sonst wird das Deck (mit Mikro-Buttons) abgeschnitten */
+  html, body { overflow-y: auto; overflow-x: hidden; }
+  #app { grid-template-columns: 1fr; grid-template-rows: auto auto 44vh auto; height: auto; min-height: 100vh; }
   .vitals { border-right: 0; border-bottom: 1px solid var(--border); }
   .deck { border-left: 0; border-top: 1px solid var(--border); }
   .stage { min-height: 40vh; }
   .b-cols { grid-template-columns: 1fr; }
   .notes-split { grid-template-columns: 1fr; }
   .notes-list { max-height: 30vh; }
+  .chatlog { max-height: 40vh; }
+  .mic-btn { display: block; }               /* Sprech-Buttons auf Touch/Mobil zeigen */
+  /* Seiten-Ansichten füllen mit height:auto nicht mehr über 1fr → normal fließen lassen */
+  body[data-view="board"] #app, body[data-view="notes"] #app, body[data-view="settings"] #app {
+    grid-template-rows: auto minmax(70vh, auto); }
 }
 
 /* ── Responsive: Handy ──────────────────── */
