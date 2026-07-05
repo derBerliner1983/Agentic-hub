@@ -108,13 +108,13 @@
       const r = await fetch("/api/voice/command", { method: "POST", body: fd });
       const j = await r.json();
       if (!j.ok) { setState("STT.ERROR"); textEl.textContent = j.error || "Fehler"; return; }
-      const how = j.task ? "  → " + j.task : (j.project ? "  → Projekt läuft" : "  (nichts verstanden)");
-      textEl.textContent = "„" + (j.text || "…") + "”" + how;
+      textEl.textContent = "„" + (j.text || "…") + "”";
       setState("TTS.STANDBY");
-      // Gesprochene Bestätigung
-      const spoken = j.task ? `Starte ${j.task.replace("-", " ")}.`
-        : (j.project ? "Ich arbeite daran." : "Ich habe nichts verstanden.");
-      speak(spoken);
+      // Antwort vorlesen (bei Frage) bzw. Kurzbestätigung (bei Kommando)
+      if (j.task) speak(`Starte ${j.task.replace("-", " ")}.`);
+      else if (j.answer) speak(j.answer);
+      else if (j.answered) speak("Ich habe leider keine Antwort gefunden.");
+      else speak("Ich habe nichts verstanden.");
     } catch (e) {
       setState("STT.ERROR"); textEl.textContent = String(e);
     }
@@ -174,7 +174,9 @@
     fetch("/api/voice/text", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }) }).then((r) => r.json()).then((j) => {
       setState("TTS.STANDBY");
-      speak(j.task ? "Erledigt." : "Alles klar.");
+      if (j.task) speak("Erledigt.");
+      else if (j.answer) speak(j.answer);           // Antwort vorlesen
+      else speak("Ich habe keine Antwort gefunden.");
     }).catch(() => setState("TTS.STANDBY"));
   }
 

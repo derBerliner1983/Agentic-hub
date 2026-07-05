@@ -805,6 +805,32 @@ async def api_update_check(request: Request) -> JSONResponse:
     return JSONResponse(await asyncio.to_thread(_check))
 
 
+_UPDATE_LOG = os.path.join(os.environ.get("STORE_DIR", "/instance"), "update.log")
+
+
+@app.get("/api/version")
+async def api_version() -> JSONResponse:
+    try:
+        commit = subprocess.check_output(
+            ["git", "-C", REPO_DIR, "rev-parse", "--short", "HEAD"], timeout=5).decode().strip()
+    except Exception:  # noqa: BLE001
+        commit = "?"
+    return JSONResponse({"commit": commit})
+
+
+@app.get("/api/system/update/log")
+async def api_update_log(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    try:
+        with open(_UPDATE_LOG, "r", errors="replace") as f:
+            txt = f.read()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"lines": [], "done": False})
+    return JSONResponse({"lines": txt.splitlines()[-40:],
+                         "done": "Update abgeschlossen" in txt})
+
+
 @app.post("/api/system/update")
 async def api_system_update(request: Request) -> JSONResponse:
     if not _require_admin(request):
@@ -814,7 +840,12 @@ async def api_system_update(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": f"update.sh nicht gefunden ({script}). "
                              "Repo muss als /repo gemountet sein."}, status_code=503)
     try:
-        subprocess.Popen(["bash", script], cwd=REPO_DIR)
+        # Ausgabe in instance/update.log (überlebt Container-Neustart → Fortschritt sichtbar)
+        logf = open(_UPDATE_LOG, "w")
+        logf.write("== Update gestartet ==\n")
+        logf.flush()
+        subprocess.Popen(["bash", script], cwd=REPO_DIR, stdout=logf,
+                         stderr=subprocess.STDOUT)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     audit.log(getattr(request.state, "username", "-"), "system_update", "")
@@ -899,16 +930,17 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "text": text, "task": task_id})
-    # … alles andere wird einfach beantwortet (z. B. „welches Datum ist heute?")
+    # … alles andere wird beantwortet und die Antwort zurückgegeben (zum Vorlesen)
     if text and len(text.strip()) >= 2:
-        asyncio.create_task(run_adhoc(text.strip(), provider(), bus))
-        return JSONResponse({"ok": True, "text": text, "task": None, "answered": True})
+        answer = await run_adhoc(text.strip(), provider(), bus)
+        return JSONResponse({"ok": True, "text": text, "task": None,
+                             "answered": True, "answer": answer or ""})
     return JSONResponse({"ok": True, "text": text, "task": None})
 
 
 @app.post("/api/voice/text")
 async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONResponse:
-    """Erkannten Text (Freihand-Modus) als Frage beantworten."""
+    """Erkannten Text (Freihand-Modus) beantworten und Antwort zurückgeben (Vorlesen)."""
     text = (data.get("text") or "").strip()
     if not text:
         return JSONResponse({"ok": False, "error": "kein Text"}, status_code=400)
@@ -916,8 +948,8 @@ async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONRespon
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "task": task_id})
-    asyncio.create_task(run_adhoc(text, provider(), bus))
-    return JSONResponse({"ok": True, "answered": True})
+    answer = await run_adhoc(text, provider(), bus)
+    return JSONResponse({"ok": True, "answered": True, "answer": answer or ""})
 
 
 @app.get("/api/voice/tts")

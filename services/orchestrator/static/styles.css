@@ -400,6 +400,11 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 .toast.in { opacity: 1; transform: translateY(0); }
 .toast.ok { border-color: var(--accent); }
 .toast.warn { border-color: #f59e0b; }
+/* Update-Fortschritt-Log */
+.upd-log { margin-top: 10px; background: var(--sunken); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 10px 12px; font-family: var(--mono); font-size: 11px;
+  line-height: 1.5; color: var(--muted); white-space: pre-wrap; word-break: break-word;
+  max-height: 300px; overflow-y: auto; }
 /* Download-Fortschritt (Modell-Pull) */
 .progress { height: 8px; background: var(--sunken); border: 1px solid var(--border);
   border-radius: var(--r-pill); overflow: hidden; margin: 8px 0; }

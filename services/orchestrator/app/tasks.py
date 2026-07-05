@@ -131,7 +131,8 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
 
     _now = dt.datetime.now()
     date_ctx = (f"Heute ist {_now.strftime('%A, %d.%m.%Y')}, aktuelle Uhrzeit "
-                f"{_now.strftime('%H:%M')}. ")
+                f"{_now.strftime('%H:%M')}. Datum und Uhrzeit kennst du damit bereits – "
+                f"dafür KEINE Web-Suche nutzen. ")
     used_tools = hasattr(provider, "chat_with_tools")
     if used_tools:
         # Werkzeug-fähig: das Modell darf Web-Suche/Vault/MCP nutzen
@@ -173,6 +174,7 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
         await emit("error", error=f"Schreiben fehlgeschlagen: {exc}")
         return
     await emit("done", output_path=rel, preview=result[:280])
+    return result
 
 
 async def run_task(task_id: str, provider: Provider, bus: EventBus) -> None:

@@ -872,11 +872,50 @@
     }
   }
 
-  // ---- UPDATE -------------------------------------------------------------
+  // ---- UPDATE (mit Fortschritt) -------------------------------------------
   async function doUpdate() {
     if (!confirm("V.A.U.L.T. aus Git aktualisieren und Container neu bauen?")) return;
+    const before = await fetch("/api/version").then((r) => r.json()).then((j) => j.commit).catch(() => "?");
     const r = await fetch("/api/system/update", { method: "POST" }).then((x) => x.json()).catch(() => ({}));
-    toast(r.ok ? "Update gestartet – Server startet gleich neu." : ("Update nicht möglich: " + (r.error || "?")), r.ok ? "ok" : "warn");
+    if (!r.ok) { toast("Update nicht möglich: " + (r.error || "?"), "warn"); return; }
+    openUpdateProgress(before);
+  }
+
+  function openUpdateProgress(before) {
+    open("System-Update läuft", `
+      <div class="hint2" id="upd-elapsed">Schritt 1/3: Code holen …</div>
+      <div class="upd-log" id="upd-log"></div>
+      <div id="upd-final"></div>`);
+    const start = Date.now();
+    const logEl = document.getElementById("upd-log");
+    const elEl = document.getElementById("upd-elapsed");
+    const finEl = document.getElementById("upd-final");
+    let sawDown = false, finished = false;
+    const secs = () => Math.round((Date.now() - start) / 1000);
+    const tick = setInterval(() => { if (!finished) elEl.dataset.t = secs(); }, 1000);
+    const finish = (ver) => {
+      finished = true; clearInterval(tick); clearInterval(pollTimer);
+      elEl.textContent = `✓ fertig in ${secs()} s`;
+      finEl.innerHTML = `<div class="hint2" style="margin-top:10px">Version: <b>${esc(ver || "?")}</b>${before && before !== "?" ? " (vorher " + esc(before) + ")" : ""}. Container läuft neu.</div>
+        <button class="btn primary" id="upd-reload">Seite neu laden</button>`;
+      document.getElementById("upd-reload").onclick = () => location.reload();
+    };
+    const poll = async () => {
+      if (finished) return;
+      let up = true, ver = null;
+      try {
+        const lg = await fetch("/api/system/update/log", { cache: "no-store" }).then((r) => r.json());
+        if (lg.lines) { logEl.textContent = lg.lines.join("\n"); logEl.scrollTop = logEl.scrollHeight; }
+      } catch (_) { up = false; }
+      try { ver = await fetch("/api/version", { cache: "no-store" }).then((r) => r.json()).then((j) => j.commit); }
+      catch (_) { up = false; }
+      if (!up) { sawDown = true; elEl.textContent = `Container wird neu gebaut & gestartet … ${secs()} s`; }
+      else if (!sawDown) { elEl.textContent = `Update läuft … ${secs()} s (baut Container)`; }
+      if (sawDown && up && ver) finish(ver);        // war weg, ist wieder da → fertig
+      if (secs() > 180 && !finished) finish(ver);   // Sicherheits-Fallback
+    };
+    const pollTimer = setInterval(poll, 2500);
+    poll();
   }
 
   // ---- Eingabe: Einzelaufgabe ODER Projekt --------------------------------
