@@ -18,6 +18,26 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // Sicherheits-Bericht (vom Host geschrieben) als Badges rendern
+  const secDot = (ok) => `<span style="color:${ok ? "var(--accent)" : "#ef4444"}">${ok ? "✓" : "✗"}</span>`;
+  function secHtml(s) {
+    if (!s || !s.available) {
+      return `<div class="hint2">${esc((s && s.note) || "Kein Sicherheits-Bericht vorhanden.")}<br>
+        Vollständige Härtung + Kernel/App-Updates laufen auf dem <b>Host</b> über
+        <code>./update.sh</code> bzw. <code>scripts/harden.sh</code>.</div>`;
+    }
+    const upd = s.updates_total || 0, su = s.updates_security || 0;
+    const overall = s.secure ? "🟢 abgesichert" : "🟠 Handlungsbedarf";
+    return `<div class="hint2">Gesamtstatus: <b>${overall}</b> · Stand ${esc((s.ts || "").replace("T", " ").slice(0, 16))}</div>
+      <div class="mgmt-row"><div class="m-title">${secDot(s.hardened === "yes")} Härtung aktiv</div>
+        <span class="board-spacer"></span>
+        <div class="m-sub">${secDot(s.ufw_active)} Firewall · ${secDot(s.ssh_hardened)} SSH · ${secDot(s.fail2ban_active)} fail2ban · ${secDot(s.docker_firewall)} Docker-FW</div></div>
+      <div class="mgmt-row"><div><div class="m-title">Aktualität</div>
+        <div class="m-sub">Kernel ${esc(s.kernel || "?")} · ${upd} Update(s) offen${su ? ` (${su} sicherheitsrelevant)` : ""} · Auto-Updates ${s.unattended ? "an" : "aus"}${s.full_updates === "yes" ? " (Kernel+Apps)" : ""}</div></div>
+        <span class="board-spacer"></span>
+        <div class="m-sub">${s.reboot_required ? "⚠ Neustart nötig" : "kein Neustart nötig"}</div></div>`;
+  }
+
   // ---- BUILDER (Tasks aus Skills bauen + Skills anlegen) -------------------
   async function openBuilder(editId) {
     const [skills, tasks, models, editTask] = await Promise.all([
@@ -263,6 +283,8 @@
     ]);
     const voiceOpts = (voice.options || []).map((m) =>
       `<option value="${esc(m)}" ${m === voice.current ? "selected" : ""}>${esc(m)}</option>`).join("");
+    const sec = me.role === "admin"
+      ? await fetch("/api/system/security").then((r) => r.json()).catch(() => ({})) : {};
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
     const reach = models.reachable;
     const running = (models.running || []).map((m) =>
@@ -349,8 +371,9 @@
         <select id="stt-model" style="flex:1">${voiceOpts}</select>
         <button class="btn" id="stt-save">Sprach-Modell setzen</button>
       </div>
-      <hr/><h3 class="set-h">System-Update</h3>
-      <div class="hint2">Holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
+      <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
+      ${secHtml(sec)}
+      <div class="hint2" style="margin-top:8px">App-Update: holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
       <div class="row" style="align-items:center;margin-top:6px">
         <button class="btn" id="upd-check">Nach Updates suchen</button>
         <button class="btn primary" id="upd-run">Jetzt aktualisieren</button>

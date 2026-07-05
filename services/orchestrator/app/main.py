@@ -696,6 +696,20 @@ async def _plan_cards(pid: str, goal: str) -> None:
         await bus.publish({"type": "board", "project": pid, "state": "plan-error", "error": str(exc)})
 
 
+# ---- Sicherheits-Bericht (vom Host geschrieben) ---------------------------
+@app.get("/api/system/security")
+async def api_security(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    from . import store
+    data = store.load("security.json", None)
+    if not data:
+        return JSONResponse({"available": False,
+                             "note": "Noch kein Bericht. Auf dem Host ausführen: "
+                                     "scripts/security-check.sh (oder ./update.sh)."})
+    return JSONResponse({"available": True, **data})
+
+
 # ---- System-Update (UPDATE-Button) ----------------------------------------
 @app.get("/api/system/update/check")
 async def api_update_check(request: Request) -> JSONResponse:

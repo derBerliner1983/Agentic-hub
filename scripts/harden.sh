@@ -29,25 +29,52 @@ LAN_NETS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
 DOCKER_NET=172.16.0.0/12
 HTTP_PORT="${HTTP_PORT:-3000}"
 HTTPS_PORT="${HTTPS_PORT:-3443}"
+# FULL_UPDATES=yes → auch Kernel + alle Apps automatisch (unattended), sonst nur Security.
+FULL_UPDATES="${FULL_UPDATES:-no}"
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a   # Dienste ohne Rückfrage neu starten
 
 # ---------------------------------------------------------------------------
-# 1) System-Updates + unattended-upgrades
+# 1) System-Updates + unattended-upgrades (voll automatisch, keine Rückfragen)
 # ---------------------------------------------------------------------------
-say "System-Updates"
+say "System-Updates (Kernel + Apps)"
+# needrestart still stellen (fragt sonst nach Neustarts)
+if [[ -d /etc/needrestart ]]; then
+  mkdir -p /etc/needrestart/conf.d
+  printf '$nrconf{restart} = "a";\n$nrconf{kernelhints} = -1;\n' > /etc/needrestart/conf.d/99-vault.conf
+fi
 apt-get update -y
-apt-get full-upgrade -y
+# Alles inkl. Kernel ziehen; -o für zurückgehaltene Pakete, alte Configs behalten
+apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade
 apt-get autoremove -y
-ok "System auf aktuellem Stand"
+apt-get autoclean -y
+ok "System auf aktuellem Stand (inkl. Kernel-Pakete)"
 
 apt-get install -y unattended-upgrades >/dev/null
 cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Download-Upgradeable-Packages "1";
 EOF
+
+if [[ "$FULL_UPDATES" == "yes" ]]; then
+  # Auch nicht-sicherheitsrelevante Updates automatisch, Kernel inklusive,
+  # unnötige Abhängigkeiten entfernen, bei Bedarf nachts neu starten.
+  cat > /etc/apt/apt.conf.d/51vault-unattended <<'EOF'
+Unattended-Upgrade::Origins-Pattern {
+    "origin=*";
+};
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:30";
+EOF
+  ok "Auto-Updates: ALLE Pakete inkl. Kernel · Auto-Reboot 04:30 Uhr"
+else
+  ok "Auto-Updates: nur Sicherheitsupdates (Standard)"
+fi
 systemctl enable --now unattended-upgrades >/dev/null 2>&1 || true
-ok "Automatische Sicherheitsupdates aktiv"
 
 # ---------------------------------------------------------------------------
 # 2) Firewall: default deny, nur LAN auf SSH + HUD
@@ -186,6 +213,14 @@ else
   info "Kein ollama.service gefunden – Schritt übersprungen."
 fi
 
+# ---------------------------------------------------------------------------
+# 7) Sicherheits-Check schreiben (HUD zeigt den Bericht an)
+# ---------------------------------------------------------------------------
+say "Sicherheits-Check"
+bash "$REPO_DIR/scripts/security-check.sh" || true
+
 say "Härtung abgeschlossen"
 ok "System gepatcht · Firewall LAN-only · SSH gehärtet · fail2ban · Auto-Updates"
+[[ "$FULL_UPDATES" == "yes" ]] && ok "Voll-Updates aktiv (Kernel + Apps automatisch)"
+[[ -f /var/run/reboot-required ]] && warn "Neustart empfohlen (Kernel/Bibliotheken aktualisiert): sudo reboot"
 info "Prüfen:  ufw status verbose   |   fail2ban-client status sshd"

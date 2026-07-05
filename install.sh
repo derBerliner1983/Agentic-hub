@@ -27,13 +27,15 @@ mkdir -p "$INSTANCE_DIR"
 # ---------------------------------------------------------------------------
 # Argumente
 # ---------------------------------------------------------------------------
-RECONFIGURE=0; MODE_ARG=""; WANT_OLLAMA=1; WANT_DOCKER=1; HARDEN_ARG=""
+RECONFIGURE=0; MODE_ARG=""; WANT_OLLAMA=1; WANT_DOCKER=1; HARDEN_ARG=""; FULL_UPDATES_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reconfigure) RECONFIGURE=1; shift ;;
     --mode) MODE_ARG="${2:-}"; shift 2 ;;
     --harden) HARDEN_ARG="yes"; shift ;;
     --no-harden) HARDEN_ARG="no"; shift ;;
+    --full-updates) FULL_UPDATES_ARG="yes"; shift ;;
+    --no-full-updates) FULL_UPDATES_ARG="no"; shift ;;
     --no-ollama) WANT_OLLAMA=0; shift ;;
     --no-docker) WANT_DOCKER=0; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -165,12 +167,24 @@ choose_harden() {
   case "${c:-n}" in j|J|y|Y|ja|Ja) echo yes ;; *) echo no ;; esac
 }
 
+choose_full_updates() {
+  [[ -n "$FULL_UPDATES_ARG" ]] && { echo "$FULL_UPDATES_ARG"; return; }
+  echo "" >&2
+  echo "  Auch das GESAMTE System (Kernel + alle Apps) automatisch aktuell halten?" >&2
+  echo "  Läuft vollständig unbeaufsichtigt (keine Rückfragen), Auto-Neustart 04:30 Uhr" >&2
+  echo "  wenn ein Kernel-Update es erfordert. (Ohne = nur Sicherheitsupdates.)" >&2
+  local c; read -rp "  Voll-Updates aktivieren? [J/n]: " c </dev/tty || true
+  case "${c:-j}" in n|N|nein|Nein) echo no ;; *) echo yes ;; esac
+}
+
 if [[ -f "$CONFIG" && "$RECONFIGURE" -eq 0 && -z "$MODE_ARG" && -z "$HARDEN_ARG" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG"; ok "Bestehende Konfiguration: MODE=${MODE:-headless}, HARDEN=${HARDEN:-no} (Update: ./update.sh)"
 else
   MODE="$(choose_mode)"
   HARDEN="$(choose_harden)"
+  FULL_UPDATES="no"
+  [[ "$HARDEN" == "yes" ]] && FULL_UPDATES="$(choose_full_updates)"
   cat > "$CONFIG" <<EOF
 # V.A.U.L.T. Instanz-Konfiguration – wird von Git-Updates NICHT überschrieben.
 MODE=$MODE
@@ -179,9 +193,11 @@ HTTP_PORT=80
 HTTPS_PORT=443
 BIND_ADDR=0.0.0.0
 HARDEN=$HARDEN
+# FULL_UPDATES=yes → Kernel + Apps automatisch (unattended, Auto-Reboot 04:30)
+FULL_UPDATES=$FULL_UPDATES
 INSTALLED_AT=$(date -Iseconds)
 EOF
-  ok "Modus '$MODE', Härtung '$HARDEN' gespeichert in $CONFIG"
+  ok "Modus '$MODE', Härtung '$HARDEN', Voll-Updates '$FULL_UPDATES' gespeichert in $CONFIG"
 fi
 # shellcheck disable=SC1090
 source "$CONFIG"
@@ -227,8 +243,12 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "${HARDEN:-no}" == "yes" ]]; then
   say "Server-Härtung"
-  HTTP_PORT="$HTTP_PORT" HTTPS_PORT="$HTTPS_PORT" bash "$REPO_DIR/scripts/harden.sh" \
+  HTTP_PORT="$HTTP_PORT" HTTPS_PORT="$HTTPS_PORT" FULL_UPDATES="${FULL_UPDATES:-no}" \
+    bash "$REPO_DIR/scripts/harden.sh" \
     && ok "Härtung abgeschlossen" || warn "Härtung fehlgeschlagen/übersprungen."
+else
+  # Auch ohne Härtung einen Sicherheits-Check schreiben (nur lesend, für das HUD)
+  bash "$REPO_DIR/scripts/security-check.sh" || true
 fi
 
 # ---------------------------------------------------------------------------

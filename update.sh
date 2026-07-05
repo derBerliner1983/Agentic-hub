@@ -72,6 +72,26 @@ if [[ "$NO_OLLAMA" -eq 0 ]]; then
   bash "$REPO_DIR/scripts/setup-ollama.sh" --update-only || echo "  • Ollama-Update übersprungen."
 fi
 
+# System-Updates (Kernel + Apps) – nur am HOST und nur wenn beim Install gewählt.
+# Im Container (Web-UI-Update) übersprungen: dort ist /.dockerenv vorhanden.
+if [[ ! -f /.dockerenv ]] && command -v systemctl >/dev/null 2>&1; then
+  if [[ "${FULL_UPDATES:-no}" == "yes" ]] && command -v apt-get >/dev/null 2>&1; then
+    echo "== System-Updates (Kernel + Apps) =="
+    export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then S=""; else S="sudo"; fi
+    $S apt-get update -y >/dev/null 2>&1 || true
+    if $S apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" full-upgrade; then
+      $S apt-get autoremove -y >/dev/null 2>&1 || true
+      echo "  ✓ System aktualisiert (inkl. Kernel-Pakete)"
+      [[ -f /var/run/reboot-required ]] && echo "  ⚠ Neustart empfohlen: sudo reboot"
+    else
+      echo "  • System-Update übersprungen/fehlgeschlagen"
+    fi
+  fi
+  # Sicherheits-Check aktualisieren (schreibt instance/security.json fürs HUD)
+  bash "$REPO_DIR/scripts/security-check.sh" || true
+fi
+
 # Kiosk-Unit bei Bedarf aktualisieren (ohne Rückfrage, Modus ist bekannt)
 if [[ "${MODE:-}" == "both" || "${MODE:-}" == "kiosk" ]]; then
   bash "$REPO_DIR/scripts/setup-kiosk.sh" "http://localhost:${HTTP_PORT:-3000}" --refresh || true
