@@ -79,6 +79,12 @@
   // ---- Chat-Verlauf (rechts unter dem Command Deck) ----------------------
   const chatlog = document.getElementById("chatlog");
   const _chat = {};   // task-id → {botEl, text, tools}
+  const _chatEmpty = '<div class="chat-empty">Aufgaben &amp; Antworten erscheinen hier (voller Text in NOTIZEN).</div>';
+  const chatClearBtn = document.getElementById("chat-clear");
+  if (chatClearBtn) chatClearBtn.onclick = () => {
+    for (const k in _chat) delete _chat[k];
+    chatlog.innerHTML = _chatEmpty;
+  };
   function chatEnsure(id, question) {
     if (_chat[id]) return _chat[id];
     const empty = chatlog.querySelector(".chat-empty");

@@ -14,6 +14,7 @@ _DEFAULTS = {
     "active_provider": "ollama",
     "ollama_url": os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434"),
     "ollama_model": "",   # aktives Standard-Modell (leer = erstes verfügbares)
+    "model_labels": {},   # eigene Anzeigenamen: {modellname: "Anzeigename"}
     "stt_model": os.environ.get("WHISPER_MODEL", "small"),   # Sprach-Modell (Whisper)
     "tts_voice": "de_DE-thorsten-medium",   # Sprachausgabe-Stimme (Piper)
     "rag_enabled": False,   # RAG: Vault-Wissen als Kontext in Antworten einbeziehen
@@ -55,6 +56,7 @@ def public() -> dict:
         "active_provider": d["active_provider"],
         "ollama_url": d["ollama_url"],
         "ollama_model": d["ollama_model"],
+        "model_labels": d["model_labels"],
         "stt_model": d["stt_model"],
         "tts_voice": d["tts_voice"],
         "rag_enabled": d["rag_enabled"],

@@ -168,7 +168,10 @@ body {
 .deck-btn.running { border-color: var(--info); color: var(--info); background: rgba(96,165,250,.1); }
 .deck-note { font-size: 10.5px; color: var(--subtle); margin-top: 14px; }
 /* Chat-Verlauf (Aufgaben & Antworten) */
-.chatlog { flex: 1; min-height: 0; overflow-y: auto; margin: 12px 0; display: flex;
+.chat-head { display: flex; align-items: center; justify-content: space-between; margin-top: 14px;
+  font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.chat-head .lnk { font-size: 10.5px; letter-spacing: 0; text-transform: none; }
+.chatlog { flex: 1; min-height: 0; overflow-y: auto; margin: 8px 0 12px; display: flex;
   flex-direction: column; gap: 10px; padding-right: 4px; }
 .chat-empty { font-size: 10.5px; color: var(--subtle); margin: auto 0; }
 .chat-entry { display: flex; flex-direction: column; gap: 4px; }
@@ -351,6 +354,15 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 .settings-body .set-h { font-size: 13px; font-weight: 700; letter-spacing: .01em; margin: 0 0 4px;
   padding-top: 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
 .settings-body .set-h:first-child { border-top: 0; padding-top: 0; }
+/* Einklappbare Abschnitte (Divider sitzt jetzt auf dem Abschnitt) */
+.set-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.set-section:first-child { border-top: 0; padding-top: 0; }
+.set-toggle { cursor: pointer; user-select: none; }
+.set-toggle::after { content: "▾"; margin-left: auto; font-size: 11px; color: var(--subtle); }
+.set-toggle:hover { color: var(--accent); }
+.set-section.collapsed .set-body { display: none; }
+.set-section.collapsed .set-toggle::after { content: "▸"; }
+.set-section .set-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
 .settings-body .btn { margin-top: 10px; }
 .settings-body .row .btn { margin-top: 0; }
 .settings-body .b-cols .btn.primary, .settings-body .row .btn.primary { margin-top: 0; }

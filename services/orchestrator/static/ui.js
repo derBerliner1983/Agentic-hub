@@ -31,6 +31,39 @@
   }
   window.toast = toast;
 
+  // Einstellungs-Abschnitte einklappbar machen (jede .set-h + Inhalt bis zur nächsten)
+  function collapsibleIn(container) {
+    const kids = Array.from(container.children);
+    let body = null;
+    kids.forEach((el) => {
+      const isH = el.classList && el.classList.contains("set-h");
+      if (isH) {
+        const sec = document.createElement("div");
+        sec.className = "set-section";
+        container.insertBefore(sec, el);
+        body = document.createElement("div");
+        body.className = "set-body";
+        el.classList.add("set-toggle");
+        sec.appendChild(el);
+        sec.appendChild(body);
+        const key = "vault-sec-" + el.textContent.trim().slice(0, 24);
+        if (localStorage.getItem(key) === "1") sec.classList.add("collapsed");
+        el.onclick = () => {
+          sec.classList.toggle("collapsed");
+          localStorage.setItem(key, sec.classList.contains("collapsed") ? "1" : "0");
+        };
+      } else if (body && !(el.classList && el.classList.contains("ollama-only"))) {
+        body.appendChild(el);
+      } else {
+        body = null;   // .ollama-only bleibt an Ort und Stelle (eigener Container)
+      }
+    });
+  }
+  function makeCollapsible(root) {
+    root.querySelectorAll(".ollama-only").forEach(collapsibleIn);  // Modell-Sektionen darin
+    collapsibleIn(root);                                            // Top-Ebene
+  }
+
   // Einmalige Spracherkennung (gleiche Engine wie der Freihand-Modus) → Transkript
   function recognizeOnce() {
     return new Promise((resolve, reject) => {
@@ -364,24 +397,31 @@
       ? await fetch("/api/system/security").then((r) => r.json()).catch(() => ({})) : {};
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
     const reach = models.reachable;
-    const running = (models.running || []).map((m) =>
-      `${esc(m.name)} · VRAM ${gb(m.size_vram || 0)}`).join(" · ") || "keine geladen";
-    const availList = (models.available || []).map((m) =>
-      `<div class="mrow"><span>${esc(m.name)} <span style="opacity:.5">(${gb(m.size)})</span></span>
-       <button class="lnk" data-delmodel="${esc(m.name)}">löschen</button></div>`).join("")
-      || '<div class="hint2">noch keine Modelle geladen</div>';
+    const labels = settings.model_labels || {};
+    const mlabel = (n) => labels[n] || n;                 // Anzeigename
+    const runningNames = new Set((models.running || []).map((m) => m.name));
+    // Modelle als Kacheln (wie Skills): Anzeigename, Größe, geladen?, umbenennen/löschen
+    const availList = (models.available || []).map((m) => `<div class="skill-tile" data-model2="${esc(m.name)}">
+        <div class="skill-top">
+          <div class="skill-name">${esc(mlabel(m.name))} ${runningNames.has(m.name) ? '<span style="color:var(--accent)">● geladen</span>' : ""}</div>
+        </div>
+        <div class="skill-desc">${esc(m.name)} · ${gb(m.size)}</div>
+        <div class="chat-actions"><button class="lnk" data-modelrename="${esc(m.name)}">umbenennen</button>
+          <button class="lnk" data-delmodel="${esc(m.name)}">löschen</button></div>
+      </div>`).join("") || '<div class="hint2">noch keine Modelle geladen</div>';
 
     const SUGGEST = ["llama3.1:8b", "qwen2.5-coder:7b", "qwen2.5:7b", "llama3.2:3b",
                      "mistral", "phi3", "gemma2:9b"];
-    const names = (models.available || []).map((m) => m.name);
+    const names = (models.available || []).map((m) => m.name);   // NUR installierte
     const noModels = !names.length;
     const uniq = (a) => [...new Set(a.filter(Boolean))];
     const active = settings.ollama_model || "";
     const activeOpts = ['<option value="">— erstes verfügbares —</option>']
-      .concat(names.map((n) => `<option value="${esc(n)}" ${n === active ? "selected" : ""}>${esc(n)}</option>`)).join("");
+      .concat(names.map((n) => `<option value="${esc(n)}" ${n === active ? "selected" : ""}>${esc(mlabel(n))}</option>`)).join("");
     const pullOpts = uniq([...SUGGEST, ...names]).map((m) => `<option value="${esc(m)}">`).join("");
-    const agOpts = (cur) => uniq([cur, ...names, ...SUGGEST])
-      .map((m) => `<option value="${esc(m)}" ${m === cur ? "selected" : ""}>${esc(m)}</option>`).join("");
+    // Agenten-Dropdowns: NUR installierte Modelle (keine Vorschläge), mit Anzeigename
+    const agOpts = (cur) => uniq([cur, ...names])
+      .map((m) => `<option value="${esc(m)}" ${m === cur ? "selected" : ""}>${esc(mlabel(m))}</option>`).join("");
     const taskRows = tasks.map((t) => `<div class="mgmt-row">
         <div><div class="m-title">${esc(t.title)}</div>
           <div class="m-sub">${esc(t.id)} · ${esc(t.domain || "ops")} · ${esc(t.cadence || "on-demand")}</div></div>
@@ -427,8 +467,8 @@
       <div class="progress" id="pull-progress" hidden><i></i></div>
       <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell geladen." : ""}</div>
       <div class="hint2">Auch <b>HuggingFace</b>: <code>hf.co/&lt;user&gt;/&lt;repo&gt;-GGUF</code></div>
-      <div class="v-head" style="margin-top:12px">INSTALLIERTE MODELLE</div>
-      <div id="model-list">${availList}</div>
+      <div class="v-head" style="margin-top:12px">UNSERE MODELLE (${(models.available || []).length})</div>
+      <div id="model-list" class="skill-grid">${availList}</div>
       <hr/><h4>Agenten-Modelle</h4>
       <div class="hint2">Welches Modell jede Rolle nutzt (wird bei Bedarf automatisch geladen).</div>
       ${agents.map((a) => `<label>${esc(a.role)}
@@ -845,6 +885,19 @@
       openSettings();
     }; });
 
+    // Modell umbenennen (nur Anzeigename)
+    settingsBody.querySelectorAll("[data-modelrename]").forEach((b) => { b.onclick = async () => {
+      const name = b.dataset.modelrename;
+      const cur = (settings.model_labels || {})[name] || "";
+      const nv = prompt(`Anzeigename für „${name}":`, cur);
+      if (nv === null) return;
+      const ml = { ...(settings.model_labels || {}) };
+      if (nv.trim()) ml[name] = nv.trim(); else delete ml[name];
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_labels: ml }) }).catch(() => {});
+      openSettings();
+    }; });
+
     document.getElementById("ag-save").onclick = async () => {
       for (const inp of settingsBody.querySelectorAll(".ag-model")) {
         const a = agents.find((x) => x.role === inp.dataset.agent);
@@ -892,6 +945,8 @@
         } else { msg.textContent = "Fehler: " + (j.error || "?"); }
       };
     }
+
+    makeCollapsible(settingsBody);   // Abschnitte ein-/ausklappbar (zuletzt, nach dem Verdrahten)
   }
 
   // ---- UPDATE (mit Fortschritt) -------------------------------------------
