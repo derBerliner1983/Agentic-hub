@@ -68,9 +68,11 @@ async def _status_poller() -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     from . import scheduler as scheduler_mod
-    # Sprach-Modell aus den Einstellungen übernehmen (überlebt Neustarts)
+    # Sprach-Modell + Stimme aus den Einstellungen übernehmen (überlebt Neustarts)
     try:
-        voice.set_stt_model(settings_mod.get().get("stt_model") or "small")
+        _s = settings_mod.get()
+        voice.set_stt_model(_s.get("stt_model") or "small")
+        voice.set_tts_voice(_s.get("tts_voice") or "de_DE-thorsten-medium")
     except Exception:  # noqa: BLE001
         pass
     app.state.poller = asyncio.create_task(_status_poller())
@@ -781,6 +783,28 @@ async def api_voice_status() -> JSONResponse:
 @app.get("/api/voice/models")
 async def api_voice_models() -> JSONResponse:
     return JSONResponse({"current": voice.current_stt_model(), "options": voice.STT_MODELS})
+
+
+@app.get("/api/voice/tts_voices")
+async def api_tts_voices() -> JSONResponse:
+    return JSONResponse({"current": voice.current_tts_voice(),
+                         "options": [{**v, "installed": voice.voice_installed(v["id"])}
+                                     for v in voice.TTS_VOICES]})
+
+
+@app.post("/api/voice/tts_voice")
+async def api_tts_voice(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Sprachausgabe-Stimme (Piper) wählen. Wird bei Bedarf nachgeladen."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    vid = (data.get("voice") or "").strip()
+    valid = {v["id"] for v in voice.TTS_VOICES}
+    if vid and vid not in valid:
+        return JSONResponse({"ok": False, "error": "unbekannte Stimme"}, status_code=400)
+    settings_mod.update({"tts_voice": vid})
+    voice.set_tts_voice(vid)
+    audit.log(getattr(request.state, "username", "-"), "tts_voice", vid)
+    return JSONResponse({"ok": True, "voice": voice.current_tts_voice()})
 
 
 @app.post("/api/voice/model")

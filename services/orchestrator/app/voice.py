@@ -17,8 +17,23 @@ PIPER_VOICE = os.environ.get("PIPER_VOICE", "/app/piper/de.onnx")
 # Der Server hat Power → auch large-v3 möglich (lädt beim ersten Nutzen nach).
 STT_MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 
+# Auswählbare Piper-Stimmen (werden bei Bedarf von HuggingFace nachgeladen).
+TTS_VOICES = [
+    {"id": "de_DE-thorsten-medium", "label": "Deutsch · Thorsten (m, medium)"},
+    {"id": "de_DE-thorsten-high", "label": "Deutsch · Thorsten (m, high)"},
+    {"id": "de_DE-kerstin-low", "label": "Deutsch · Kerstin (w, low)"},
+    {"id": "de_DE-eva_k-x_low", "label": "Deutsch · Eva (w, x-low)"},
+    {"id": "de_DE-ramona-low", "label": "Deutsch · Ramona (w, low)"},
+    {"id": "de_DE-karlsson-low", "label": "Deutsch · Karlsson (m, low)"},
+    {"id": "en_US-amy-medium", "label": "English · Amy (f, medium)"},
+    {"id": "en_US-ryan-high", "label": "English · Ryan (m, high)"},
+]
+_DEFAULT_VOICE = "de_DE-thorsten-medium"
+VOICES_DIR = Path("/app/piper/voices")
+
 _stt_name = os.environ.get("WHISPER_MODEL", "small")   # aktiv gewähltes Modell
 _stt_model = None  # lazy geladen (Cache für _stt_name)
+_tts_voice = os.environ.get("PIPER_VOICE_ID", _DEFAULT_VOICE)   # aktive Stimme
 
 
 def stt_available() -> bool:
@@ -54,6 +69,53 @@ def _get_model():
     return _stt_model
 
 
+# ---- TTS-Stimme wählen/laden ----------------------------------------------
+def current_tts_voice() -> str:
+    return _tts_voice
+
+
+def set_tts_voice(voice_id: str) -> None:
+    global _tts_voice
+    voice_id = (voice_id or "").strip()
+    if voice_id:
+        _tts_voice = voice_id
+
+
+def voice_installed(voice_id: str) -> bool:
+    if voice_id == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
+        return True
+    return (VOICES_DIR / f"{voice_id}.onnx").exists()
+
+
+def _download_voice(voice_id: str, dest) -> bool:
+    """Lädt eine Piper-Stimme (.onnx + .json) von HuggingFace nach."""
+    try:
+        lang, name, quality = voice_id.split("-")
+        region = lang.split("_")[0]
+        base = (f"https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+                f"{region}/{lang}/{name}/{quality}/{voice_id}")
+        VOICES_DIR.mkdir(parents=True, exist_ok=True)
+        import urllib.request
+        urllib.request.urlretrieve(base + ".onnx", str(dest))
+        urllib.request.urlretrieve(base + ".onnx.json", str(dest) + ".json")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _resolve_voice_path() -> str:
+    """Pfad zur aktiven Stimme; lädt sie bei Bedarf nach, sonst Standard."""
+    vid = _tts_voice
+    if vid == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
+        return PIPER_VOICE
+    onnx = VOICES_DIR / f"{vid}.onnx"
+    if onnx.exists():
+        return str(onnx)
+    if _download_voice(vid, onnx) and onnx.exists():
+        return str(onnx)
+    return PIPER_VOICE   # Fallback auf vorinstallierte Stimme
+
+
 def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:
     """Browser-Audio → Text. Konvertiert robust via ffmpeg nach 16k-Mono-WAV."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -74,13 +136,14 @@ def synthesize(text: str) -> bytes | None:
     """Text → WAV-Bytes via Piper. None, wenn Piper nicht verfügbar."""
     if not tts_available() or not text.strip():
         return None
+    voice_path = _resolve_voice_path()
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "out.wav"
         env = dict(os.environ)
         piper_dir = str(Path(PIPER_BIN).parent)
         env["LD_LIBRARY_PATH"] = piper_dir + ":" + env.get("LD_LIBRARY_PATH", "")
         subprocess.run(
-            [PIPER_BIN, "--model", PIPER_VOICE, "--output_file", str(out)],
+            [PIPER_BIN, "--model", voice_path, "--output_file", str(out)],
             input=text.encode("utf-8"), check=True, capture_output=True,
             cwd=piper_dir, env=env,
         )

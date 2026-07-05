@@ -271,7 +271,7 @@
   }
 
   async function appendModelsAndUsers() {
-    const [me, models, agents, tasks, skills, mcps, settings, voice] = await Promise.all([
+    const [me, models, agents, tasks, skills, mcps, settings, voice, tts] = await Promise.all([
       fetch("/api/me").then((r) => r.json()).catch(() => ({})),
       fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [], running: [] })),
       fetch("/api/agents").then((r) => r.json()).catch(() => []),
@@ -280,9 +280,12 @@
       fetch("/api/mcp").then((r) => r.json()).catch(() => []),
       fetch("/api/settings").then((r) => r.json()).catch(() => ({})),
       fetch("/api/voice/models").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
+      fetch("/api/voice/tts_voices").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
     ]);
     const voiceOpts = (voice.options || []).map((m) =>
       `<option value="${esc(m)}" ${m === voice.current ? "selected" : ""}>${esc(m)}</option>`).join("");
+    const ttsOpts = (tts.options || []).map((v) =>
+      `<option value="${esc(v.id)}" ${v.id === tts.current ? "selected" : ""}>${esc(v.label)}${v.installed ? "" : " (lädt bei 1. Nutzung)"}</option>`).join("");
     const sec = me.role === "admin"
       ? await fetch("/api/system/security").then((r) => r.json()).catch(() => ({})) : {};
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
@@ -371,6 +374,11 @@
       <div class="row" style="align-items:center;margin-top:6px">
         <select id="stt-model" style="flex:1">${voiceOpts}</select>
         <button class="btn" id="stt-save">Sprach-Modell setzen</button>
+      </div>
+      <div class="hint2" style="margin-top:10px">Stimme der Sprachausgabe (Piper). Neue Stimme wird beim ersten Sprechen einmalig geladen.</div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <select id="tts-voice" style="flex:1">${ttsOpts}</select>
+        <button class="btn" id="tts-save">Stimme setzen</button>
       </div>
       <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
       ${secHtml(sec)}
@@ -513,6 +521,16 @@
         body: JSON.stringify({ name }) }).then((r) => r.json()).catch(() => ({}));
       sttSave.textContent = j.ok ? "✓ gesetzt" : "Fehler";
       setTimeout(() => (sttSave.textContent = "Sprach-Modell setzen"), 1500);
+    };
+
+    // TTS-Stimme wechseln
+    const ttsSave = document.getElementById("tts-save");
+    if (ttsSave) ttsSave.onclick = async () => {
+      const voiceId = document.getElementById("tts-voice").value;
+      const j = await fetch("/api/voice/tts_voice", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voice: voiceId }) }).then((r) => r.json()).catch(() => ({}));
+      ttsSave.textContent = j.ok ? "✓ gesetzt" : "Fehler";
+      setTimeout(() => (ttsSave.textContent = "Stimme setzen"), 1500);
     };
 
     // System-Update: prüfen + auslösen

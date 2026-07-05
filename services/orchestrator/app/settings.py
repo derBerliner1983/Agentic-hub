@@ -15,6 +15,7 @@ _DEFAULTS = {
     "ollama_url": os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434"),
     "ollama_model": "",   # aktives Standard-Modell (leer = erstes verfügbares)
     "stt_model": os.environ.get("WHISPER_MODEL", "small"),   # Sprach-Modell (Whisper)
+    "tts_voice": "de_DE-thorsten-medium",   # Sprachausgabe-Stimme (Piper)
     "anthropic_key": "",
     "anthropic_model": "claude-sonnet-5",
     "openai_key": "",
@@ -51,6 +52,7 @@ def public() -> dict:
         "ollama_url": d["ollama_url"],
         "ollama_model": d["ollama_model"],
         "stt_model": d["stt_model"],
+        "tts_voice": d["tts_voice"],
         "anthropic_model": d["anthropic_model"],
         "openai_model": d["openai_model"],
         "anthropic_key_set": bool(d["anthropic_key"]),
