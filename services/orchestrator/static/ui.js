@@ -271,7 +271,7 @@
   }
 
   async function appendModelsAndUsers() {
-    const [me, models, agents, tasks, skills, mcps, settings, voice, tts, sched2] = await Promise.all([
+    const [me, models, agents, tasks, skills, mcps, settings, voice, tts, sched2, rag] = await Promise.all([
       fetch("/api/me").then((r) => r.json()).catch(() => ({})),
       fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [], running: [] })),
       fetch("/api/agents").then((r) => r.json()).catch(() => []),
@@ -282,6 +282,7 @@
       fetch("/api/voice/models").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
       fetch("/api/voice/tts_voices").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
       fetch("/api/schedule").then((r) => r.json()).catch(() => []),
+      fetch("/api/rag/info").then((r) => r.json()).catch(() => ({ chunks: 0, enabled: false })),
     ]);
     const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso);
       return d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
@@ -373,6 +374,16 @@
       <div class="hint2">Wiederverwendbare Prompt-Bausteine für Tasks.</div>
       <div id="skill-list">${skillRows}</div>
       <button class="btn" id="skill-new" style="margin-top:8px">＋ Neuer Skill</button>
+      <hr/><h3 class="set-h">Vault-Wissen (RAG)</h3>
+      <div class="hint2">Bezieht relevante Notizen automatisch als Kontext in Antworten ein
+        (Embeddings mit <code>nomic-embed-text</code>). Nach neuen Notizen Index neu bauen.</div>
+      <label class="switch" style="margin-top:8px">
+        <input type="checkbox" id="rag-enabled" ${rag.enabled ? "checked" : ""}/>
+        <span>RAG aktiv</span></label>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <button class="btn" id="rag-reindex">Index neu bauen</button>
+        <span class="hint2" id="rag-info">${rag.chunks || 0} Abschnitte im Index${rag.model ? " · " + esc(rag.model) : ""}</span>
+      </div>
       <hr/><h3 class="set-h">MCP-Server</h3>
       <div class="hint2">Model-Context-Protocol-Server einbinden (Tools/Datenquellen). Zählt zum Wissen des Gehirns.</div>
       <div id="mcp-list">${mcpRows}</div>
@@ -516,6 +527,20 @@
     // Skills: neu (öffnet Builder mit Skill-Formular)
     const skillNew = document.getElementById("skill-new");
     if (skillNew) skillNew.onclick = () => openBuilder();
+
+    // RAG: ein/aus + Index neu bauen
+    const ragEnabled = document.getElementById("rag-enabled");
+    if (ragEnabled) ragEnabled.onchange = async () => {
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rag_enabled: ragEnabled.checked }) }).catch(() => {});
+    };
+    const ragReindex = document.getElementById("rag-reindex");
+    if (ragReindex) ragReindex.onclick = async () => {
+      ragReindex.disabled = true; ragReindex.textContent = "baut …";
+      await fetch("/api/rag/reindex", { method: "POST" }).catch(() => {});
+      document.getElementById("rag-info").textContent = "Index wird gebaut – siehe Board-Live-Log …";
+      setTimeout(() => { ragReindex.disabled = false; ragReindex.textContent = "Index neu bauen"; }, 2000);
+    };
 
     // MCP hinzufügen / entfernen
     const mcpAdd = document.getElementById("mcp-add");

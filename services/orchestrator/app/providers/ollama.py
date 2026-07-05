@@ -120,6 +120,17 @@ class OllamaProvider(Provider):
             resp.raise_for_status()
             return resp.json().get("response", "")
 
+    async def embed(self, text: str, model: str = "nomic-embed-text") -> list[float]:
+        """Einbettung (Vektor) für RAG. Leere Liste bei Fehler/keinem Modell."""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(f"{self.base_url}/api/embeddings",
+                                         json={"model": model, "prompt": text})
+                resp.raise_for_status()
+                return resp.json().get("embedding", []) or []
+        except Exception:  # noqa: BLE001
+            return []
+
     async def chat_with_tools(self, prompt: str, tools: list[dict], execute,
                               model: str | None = None, system: str | None = None,
                               on_event=None, max_rounds: int = 5) -> str:

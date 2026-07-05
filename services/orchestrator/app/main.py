@@ -605,6 +605,23 @@ async def api_notes_delete(request: Request, path: str = "") -> JSONResponse:
     return JSONResponse({"ok": ok})
 
 
+# ---- RAG (Vault-Wissen als Kontext) ---------------------------------------
+@app.get("/api/rag/info")
+async def api_rag_info() -> JSONResponse:
+    from . import rag
+    return JSONResponse({**rag.info(), "enabled": bool(settings_mod.get().get("rag_enabled"))})
+
+
+@app.post("/api/rag/reindex")
+async def api_rag_reindex(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    from . import rag
+    audit.log(getattr(request.state, "username", "-"), "rag_reindex", "")
+    asyncio.create_task(rag.reindex(bus))
+    return JSONResponse({"ok": True, "note": "Index wird gebaut – Fortschritt im Live-Log."})
+
+
 # ---- Backup / Restore ------------------------------------------------------
 @app.get("/api/backup")
 async def api_backup() -> Response:

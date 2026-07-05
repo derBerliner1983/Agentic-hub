@@ -16,6 +16,7 @@ _DEFAULTS = {
     "ollama_model": "",   # aktives Standard-Modell (leer = erstes verfügbares)
     "stt_model": os.environ.get("WHISPER_MODEL", "small"),   # Sprach-Modell (Whisper)
     "tts_voice": "de_DE-thorsten-medium",   # Sprachausgabe-Stimme (Piper)
+    "rag_enabled": False,   # RAG: Vault-Wissen als Kontext in Antworten einbeziehen
     "anthropic_key": "",
     "anthropic_model": "claude-sonnet-5",
     "openai_key": "",
@@ -53,6 +54,7 @@ def public() -> dict:
         "ollama_model": d["ollama_model"],
         "stt_model": d["stt_model"],
         "tts_voice": d["tts_voice"],
+        "rag_enabled": d["rag_enabled"],
         "anthropic_model": d["anthropic_model"],
         "openai_model": d["openai_model"],
         "anthropic_key_set": bool(d["anthropic_key"]),
