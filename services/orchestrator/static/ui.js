@@ -335,8 +335,16 @@
       || '<div class="hint2">keine geplanten Automationen · Zeitplan beim Bearbeiten eines Kurzbefehls setzen</div>';
     const voiceOpts = (voice.options || []).map((m) =>
       `<option value="${esc(m)}" ${m === voice.current ? "selected" : ""}>${esc(m)}</option>`).join("");
+    const mb = (n) => (n / 1e6).toFixed(0) + " MB";
     const ttsOpts = (tts.options || []).map((v) =>
-      `<option value="${esc(v.id)}" ${v.id === tts.current ? "selected" : ""}>${esc(v.label)}${v.installed ? "" : " (lädt bei 1. Nutzung)"}</option>`).join("");
+      `<option value="${esc(v.id)}" ${v.id === tts.current ? "selected" : ""}>${esc(v.label)}${v.installed ? " ✓" : " (lädt bei 1. Nutzung)"}</option>`).join("");
+    const ttsList = (tts.options || []).map((v) => `<div class="mgmt-row">
+        <div><div class="m-title">${esc(v.label)} ${v.installed ? '<span style="color:var(--accent)">✓ geladen</span>' : '<span style="opacity:.5">nicht geladen</span>'}</div>
+          <div class="m-sub">${esc(v.id)}${v.installed ? " · " + mb(v.size) : ""}</div></div>
+        <span class="board-spacer"></span>
+        ${v.installed
+          ? `<button class="lnk" data-voicedel="${esc(v.id)}">löschen</button>`
+          : `<button class="lnk" data-voicedl="${esc(v.id)}">herunterladen</button>`}</div>`).join("");
     const sec = me.role === "admin"
       ? await fetch("/api/system/security").then((r) => r.json()).catch(() => ({})) : {};
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
@@ -455,6 +463,13 @@
         <button class="btn" id="tts-save">Stimme setzen</button>
       </div>
       <div class="hint2" id="tts-msg"></div>
+      <div class="v-head" style="margin-top:12px">STIMMEN · HERUNTERGELADEN?</div>
+      <div id="tts-list">${ttsList}</div>
+      <div class="hint2" style="margin-top:6px">Eigene Piper-Stimme nachladen (Format <code>de_DE-name-quality</code>) – hunderte auf HuggingFace (rhasspy/piper-voices).</div>
+      <div class="row" style="margin-top:6px">
+        <input id="tts-custom" placeholder="z. B. de_DE-thorsten_emotional-medium" style="flex:1"/>
+        <button class="btn" id="tts-custom-dl">⤓ Laden</button>
+      </div>
       <label style="margin-top:12px">Freihand-Weckwort (leer = aus)</label>
       <div class="hint2">Im Freihand-Modus hört er zu; sagst du dieses Wort, wird alles danach als Befehl ausgeführt (z. B. „Computer, welches Datum ist heute?"). Braucht Chrome/Edge.</div>
       <div class="row" style="align-items:center;margin-top:6px">
@@ -663,6 +678,29 @@
       _previewAudio.onended = () => { ttsPrev.disabled = false; msg.textContent = "So klingt „" + voiceId + "“."; };
       _previewAudio.onerror = () => { ttsPrev.disabled = false; msg.textContent = "Vorhören fehlgeschlagen (Piper/Netz?)."; };
       _previewAudio.play().catch(() => { ttsPrev.disabled = false; msg.textContent = "Wiedergabe blockiert – erneut tippen."; });
+    };
+
+    // Stimmen herunterladen / löschen / eigene laden
+    const voiceDl = async (vid, btn) => {
+      if (btn) { btn.textContent = "lädt …"; btn.style.pointerEvents = "none"; }
+      const j = await fetch("/api/voice/tts_download", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voice: vid }) }).then((r) => r.json()).catch(() => ({}));
+      if (j.ok) toast(`Stimme geladen (${((j.size || 0) / 1e6).toFixed(0)} MB).`, "ok");
+      else toast("Laden fehlgeschlagen: " + (j.error || "?"), "warn");
+      openSettings();
+    };
+    settingsBody.querySelectorAll("[data-voicedl]").forEach((b) => { b.onclick = () => voiceDl(b.dataset.voicedl, b); });
+    settingsBody.querySelectorAll("[data-voicedel]").forEach((b) => { b.onclick = async () => {
+      if (!confirm(`Stimme ${b.dataset.voicedel} löschen?`)) return;
+      await fetch("/api/voice/tts_delete", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voice: b.dataset.voicedel }) }).catch(() => {});
+      openSettings();
+    }; });
+    const ttsCustomDl = document.getElementById("tts-custom-dl");
+    if (ttsCustomDl) ttsCustomDl.onclick = () => {
+      const vid = document.getElementById("tts-custom").value.trim();
+      if (!vid) return;
+      voiceDl(vid, ttsCustomDl);
     };
 
     // Freihand-Weckwort speichern

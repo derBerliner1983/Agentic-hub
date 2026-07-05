@@ -836,8 +836,25 @@ async def api_voice_models() -> JSONResponse:
 @app.get("/api/voice/tts_voices")
 async def api_tts_voices() -> JSONResponse:
     return JSONResponse({"current": voice.current_tts_voice(),
-                         "options": [{**v, "installed": voice.voice_installed(v["id"])}
-                                     for v in voice.TTS_VOICES]})
+                         "options": voice.installed_voices()})
+
+
+@app.post("/api/voice/tts_download")
+async def api_tts_download(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Stimme vorab herunterladen (auch eigene Piper-ID)."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    vid = (data.get("voice") or "").strip()
+    res = await asyncio.to_thread(voice.download_voice_now, vid)
+    return JSONResponse(res, status_code=200 if res.get("ok") else 400)
+
+
+@app.post("/api/voice/tts_delete")
+async def api_tts_delete(request: Request, data: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    ok = voice.delete_voice((data.get("voice") or "").strip())
+    return JSONResponse({"ok": ok})
 
 
 @app.post("/api/voice/tts_voice")

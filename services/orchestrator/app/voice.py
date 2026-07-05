@@ -5,6 +5,7 @@ Keyword-Matcher ordnet den Text einem Task zu, TTS spricht Antworten.
 """
 from __future__ import annotations
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -18,15 +19,19 @@ PIPER_VOICE = os.environ.get("PIPER_VOICE", "/app/piper/de.onnx")
 STT_MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
 
 # Auswählbare Piper-Stimmen (werden bei Bedarf von HuggingFace nachgeladen).
+# 'high' = natürlichste/beste Qualität. Eigene Stimmen per ID nachladbar.
 TTS_VOICES = [
+    {"id": "de_DE-thorsten-high", "label": "Deutsch · Thorsten (m, high – natürlichste)"},
+    {"id": "de_DE-thorsten_emotional-medium", "label": "Deutsch · Thorsten emotional (m)"},
     {"id": "de_DE-thorsten-medium", "label": "Deutsch · Thorsten (m, medium)"},
-    {"id": "de_DE-thorsten-high", "label": "Deutsch · Thorsten (m, high)"},
-    {"id": "de_DE-kerstin-low", "label": "Deutsch · Kerstin (w, low)"},
-    {"id": "de_DE-eva_k-x_low", "label": "Deutsch · Eva (w, x-low)"},
-    {"id": "de_DE-ramona-low", "label": "Deutsch · Ramona (w, low)"},
-    {"id": "de_DE-karlsson-low", "label": "Deutsch · Karlsson (m, low)"},
+    {"id": "de_DE-kerstin-low", "label": "Deutsch · Kerstin (w)"},
+    {"id": "de_DE-eva_k-x_low", "label": "Deutsch · Eva (w)"},
+    {"id": "de_DE-ramona-low", "label": "Deutsch · Ramona (w)"},
+    {"id": "de_DE-karlsson-low", "label": "Deutsch · Karlsson (m)"},
+    {"id": "de_DE-mls-medium", "label": "Deutsch · MLS (gemischt)"},
     {"id": "en_US-amy-medium", "label": "English · Amy (f, medium)"},
     {"id": "en_US-ryan-high", "label": "English · Ryan (m, high)"},
+    {"id": "en_GB-alba-medium", "label": "English (UK) · Alba (f)"},
 ]
 _DEFAULT_VOICE = "de_DE-thorsten-medium"
 VOICES_DIR = Path("/app/piper/voices")
@@ -85,6 +90,61 @@ def voice_installed(voice_id: str) -> bool:
     if voice_id == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
         return True
     return (VOICES_DIR / f"{voice_id}.onnx").exists()
+
+
+def _voice_size(voice_id: str) -> int:
+    if voice_id == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
+        return Path(PIPER_VOICE).stat().st_size
+    p = VOICES_DIR / f"{voice_id}.onnx"
+    return p.stat().st_size if p.exists() else 0
+
+
+_VOICE_ID_RE = re.compile(r"^[a-z]{2}_[A-Z]{2}-[a-z0-9_]+-(x_low|low|medium|high)$")
+
+
+def valid_voice_id(voice_id: str) -> bool:
+    return bool(_VOICE_ID_RE.match(voice_id or ""))
+
+
+def installed_voices() -> list[dict]:
+    """Alle bekannten Stimmen + eigene, mit 'installiert'-Flag und Größe."""
+    known = {v["id"] for v in TTS_VOICES}
+    out = []
+    for v in TTS_VOICES:
+        sz = _voice_size(v["id"])
+        out.append({**v, "installed": sz > 0, "size": sz})
+    if VOICES_DIR.exists():
+        for p in sorted(VOICES_DIR.glob("*.onnx")):
+            vid = p.stem
+            if vid not in known:
+                out.append({"id": vid, "label": vid + " (eigene)",
+                            "installed": True, "size": p.stat().st_size})
+    return out
+
+
+def download_voice_now(voice_id: str) -> dict:
+    """Stimme sofort herunterladen (vorab, nicht erst beim Sprechen)."""
+    if not valid_voice_id(voice_id):
+        return {"ok": False, "error": "ungültige Stimmen-ID (z. B. de_DE-thorsten-high)"}
+    if voice_installed(voice_id):
+        return {"ok": True, "size": _voice_size(voice_id)}
+    onnx = VOICES_DIR / f"{voice_id}.onnx"
+    ok = _download_voice(voice_id, onnx)
+    return {"ok": bool(ok and onnx.exists()), "size": _voice_size(voice_id),
+            "error": None if ok else "Download fehlgeschlagen (Stimme existiert nicht?)"}
+
+
+def delete_voice(voice_id: str) -> bool:
+    """Heruntergeladene Stimme löschen (die vorinstallierte Standardstimme bleibt)."""
+    if voice_id == _DEFAULT_VOICE:
+        return False
+    ok = False
+    for suffix in (".onnx", ".onnx.json"):
+        p = VOICES_DIR / f"{voice_id}{suffix}"
+        if p.exists():
+            p.unlink()
+            ok = True
+    return ok
 
 
 def _download_voice(voice_id: str, dest) -> bool:

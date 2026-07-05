@@ -206,6 +206,10 @@ body[data-view="settings"] .vitals, body[data-view="settings"] .stage, body[data
 body[data-view="board"] .board-view { display: flex; }
 body[data-view="notes"] .notes-view { display: flex; }
 body[data-view="settings"] .settings-view { display: flex; }
+/* In den Seiten-Ansichten füllt eine einzige Inhaltszeile das App-Raster –
+   sonst bleiben (v. a. auf schmalen Screens) leere Gitterzeilen als dunkler Balken. */
+body[data-view="board"] #app, body[data-view="notes"] #app, body[data-view="settings"] #app {
+  grid-template-rows: auto 1fr; }
 
 /* ── Seiten-Kopf (Notizen/Einstellungen) ── */
 .page-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
