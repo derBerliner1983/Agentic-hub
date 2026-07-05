@@ -390,6 +390,8 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
   border: 0; background: var(--accent); color: var(--accent-ink); font-family: var(--font);
   font-size: 13px; font-weight: 600; cursor: pointer; touch-action: none; user-select: none; }
 .mic-btn.rec { background: var(--info); }
+.mic-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#handsfree-btn { margin-top: 6px; }
 
 /* ── Responsive: Tablet ─────────────────── */
 @media (max-width: 1100px) {

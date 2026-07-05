@@ -129,6 +129,9 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
         except Exception:  # noqa: BLE001
             rag_ctx = ""
 
+    _now = dt.datetime.now()
+    date_ctx = (f"Heute ist {_now.strftime('%A, %d.%m.%Y')}, aktuelle Uhrzeit "
+                f"{_now.strftime('%H:%M')}. ")
     used_tools = hasattr(provider, "chat_with_tools")
     if used_tools:
         # Werkzeug-fähig: das Modell darf Web-Suche/Vault/MCP nutzen
@@ -139,9 +142,9 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
         try:
             result = await provider.chat_with_tools(
                 prompt, tools_mod.toolset(), tools_mod.execute,
-                system="Du bist ein hilfreicher Assistent mit Werkzeugen (Web-Suche, "
-                       "Web-Abruf, Vault-Suche). Nutze sie bei aktuellen Fakten/Zahlen. "
-                       "Antworte prägnant auf Deutsch." + rag_ctx,
+                system=date_ctx + "Du bist ein hilfreicher Assistent mit Werkzeugen "
+                       "(Web-Suche, Web-Abruf, Vault-Suche). Nutze sie bei aktuellen "
+                       "Fakten/Zahlen. Antworte kurz und direkt auf Deutsch." + rag_ctx,
                 on_event=on_tool)
             await emit("stream", chunk=result, step=1, steps=1)
         except Exception:  # noqa: BLE001 – Fallback ohne Tools
@@ -149,7 +152,7 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
             result = ""
     if not used_tools:
         try:
-            async for chunk in provider.generate_stream(prompt, system=(rag_ctx or None)):
+            async for chunk in provider.generate_stream(prompt, system=(date_ctx + rag_ctx)):
                 result += chunk
                 await emit("stream", chunk=chunk, step=1, steps=1)
         except Exception as exc:  # noqa: BLE001

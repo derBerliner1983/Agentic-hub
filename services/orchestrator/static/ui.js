@@ -438,6 +438,12 @@
         <button class="btn" id="tts-save">Stimme setzen</button>
       </div>
       <div class="hint2" id="tts-msg"></div>
+      <label style="margin-top:12px">Freihand-Weckwort (leer = aus)</label>
+      <div class="hint2">Im Freihand-Modus hört er zu; sagst du dieses Wort, wird alles danach als Befehl ausgeführt (z. B. „Computer, welches Datum ist heute?"). Braucht Chrome/Edge.</div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <input id="wake-word" value="${esc(settings.wake_word || "")}" placeholder="z. B. computer · vault · jarvis" style="flex:1"/>
+        <button class="btn" id="wake-save">Weckwort setzen</button>
+      </div>
       <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
       ${secHtml(sec)}
       <div class="hint2" style="margin-top:8px">App-Update: holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
@@ -625,6 +631,16 @@
       _previewAudio.onended = () => { ttsPrev.disabled = false; msg.textContent = "So klingt „" + voiceId + "“."; };
       _previewAudio.onerror = () => { ttsPrev.disabled = false; msg.textContent = "Vorhören fehlgeschlagen (Piper/Netz?)."; };
       _previewAudio.play().catch(() => { ttsPrev.disabled = false; msg.textContent = "Wiedergabe blockiert – erneut tippen."; });
+    };
+
+    // Freihand-Weckwort speichern
+    const wakeSave = document.getElementById("wake-save");
+    if (wakeSave) wakeSave.onclick = async () => {
+      const wake_word = document.getElementById("wake-word").value.trim();
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wake_word }) }).catch(() => {});
+      wakeSave.textContent = "✓ gesetzt";
+      setTimeout(() => (wakeSave.textContent = "Weckwort setzen"), 1500);
     };
 
     // TTS-Stimme setzen (nach dem Vorhören bestätigen)

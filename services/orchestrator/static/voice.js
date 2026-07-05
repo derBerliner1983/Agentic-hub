@@ -152,5 +152,61 @@
     return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
   }
 
+  // ---- Freihand-Modus mit Weckwort (Browser-Spracherkennung) --------------
+  // Hört durchgehend; sobald das Weckwort fällt, wird der Rest als Befehl gesendet.
+  // Nutzt die Web-Speech-API (Chrome/Edge). Push-to-talk (oben) bleibt lokal via Whisper.
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recog = null, handsFree = false, wakeWord = "";
+
+  async function loadWake() {
+    try {
+      const s = await fetch("/api/settings").then((r) => r.json());
+      wakeWord = (s.wake_word || "").trim().toLowerCase();
+    } catch (_) { wakeWord = ""; }
+  }
+
+  function sendText(text) {
+    setState("STT.THINKING");
+    textEl.textContent = "„" + text + "”";
+    fetch("/api/voice/text", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }) }).then((r) => r.json()).then((j) => {
+      setState("TTS.STANDBY");
+      speak(j.task ? "Erledigt." : "Alles klar.");
+    }).catch(() => setState("TTS.STANDBY"));
+  }
+
+  function startHandsFree() {
+    if (!SR || !wakeWord) return false;
+    recog = new SR();
+    recog.lang = "de-DE"; recog.continuous = true; recog.interimResults = false;
+    recog.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = (e.results[i][0].transcript || "").toLowerCase().trim();
+        const at = t.indexOf(wakeWord);
+        if (at !== -1) {
+          const cmd = t.slice(at + wakeWord.length).replace(/^[\s,\.:]+/, "").trim();
+          if (cmd) sendText(cmd);
+        }
+      }
+    };
+    recog.onerror = () => {};
+    recog.onend = () => { if (handsFree) { try { recog.start(); } catch (_) {} } };
+    try { recog.start(); return true; } catch (_) { return false; }
+  }
+  function stopHandsFree() { handsFree = false; if (recog) { try { recog.stop(); } catch (_) {} } }
+
+  const hfBtn = document.getElementById("handsfree-btn");
+  if (hfBtn) {
+    hfBtn.addEventListener("click", async () => {
+      if (handsFree) { stopHandsFree(); hfBtn.classList.remove("on"); setNote("Freihand aus."); return; }
+      await loadWake();
+      if (!SR) { setNote("Freihand braucht Chrome/Edge (Web-Speech)."); return; }
+      if (!wakeWord) { setNote("Erst ein Weckwort in den Einstellungen setzen."); return; }
+      handsFree = true;
+      if (startHandsFree()) { hfBtn.classList.add("on"); setNote(`Freihand an – sag „${wakeWord} …“`); }
+      else { handsFree = false; setNote("Freihand konnte nicht starten."); }
+    });
+  }
+
   setState("TTS.STANDBY");
 })();

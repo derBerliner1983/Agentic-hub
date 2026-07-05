@@ -173,3 +173,18 @@ def match_task(text: str) -> str | None:
         if any(k in low for k in keys):
             return task_id
     return None
+
+
+# Nur bei ausdrücklichen Kommandos einen Task starten – normale Fragen werden
+# beantwortet (nicht mehr versehentlich als „Plan Today" o. ä. ausgelöst).
+_CMD_TRIGGERS = ("starte", "start", "führe", "fuehre", "fuhre", "run", "öffne",
+                 "oeffne", "offne", "mach", "task", "aufgabe", "los")
+
+
+def match_command(text: str) -> str | None:
+    words = text.lower().strip().split()
+    if not words:
+        return None
+    if not any(w in _CMD_TRIGGERS for w in words[:2]):
+        return None
+    return match_task(text)

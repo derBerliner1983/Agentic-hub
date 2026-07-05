@@ -877,15 +877,30 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
         text = await asyncio.to_thread(voice.transcribe, audio, suffix)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": f"STT fehlgeschlagen: {exc}"}, status_code=500)
-    task_id = voice.match_task(text)
+    # Nur ausdrückliche Kommandos ("starte …") lösen einen Task aus …
+    task_id = voice.match_command(text)
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "text": text, "task": task_id})
-    # Kein vordefinierter Kurzbefehl → freien Sprachbefehl als Einzelaufgabe beantworten
-    if text and len(text.strip()) >= 3:
+    # … alles andere wird einfach beantwortet (z. B. „welches Datum ist heute?")
+    if text and len(text.strip()) >= 2:
         asyncio.create_task(run_adhoc(text.strip(), provider(), bus))
-        return JSONResponse({"ok": True, "text": text, "task": None, "project": True})
+        return JSONResponse({"ok": True, "text": text, "task": None, "answered": True})
     return JSONResponse({"ok": True, "text": text, "task": None})
+
+
+@app.post("/api/voice/text")
+async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Erkannten Text (Freihand-Modus) als Frage beantworten."""
+    text = (data.get("text") or "").strip()
+    if not text:
+        return JSONResponse({"ok": False, "error": "kein Text"}, status_code=400)
+    task_id = voice.match_command(text)
+    if task_id:
+        asyncio.create_task(run_task(task_id, provider(), bus))
+        return JSONResponse({"ok": True, "task": task_id})
+    asyncio.create_task(run_adhoc(text, provider(), bus))
+    return JSONResponse({"ok": True, "answered": True})
 
 
 @app.get("/api/voice/tts")

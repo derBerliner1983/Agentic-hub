@@ -125,7 +125,8 @@
     taskTitle.textContent = (msg.title || msg.id || "").toUpperCase();
     if (msg.state === "stream") {
       _stream[msg.id] = (_stream[msg.id] || "") + (msg.chunk || "");
-      taskState.textContent = "✎ " + _stream[msg.id].slice(-140).replace(/\s+/g, " ");
+      // Nur Status oben zeigen (kein durchlaufender Text) – die Antwort steht im Chat.
+      taskState.textContent = "schreibt …";
       const ce = _chat[msg.id] || chatEnsure(msg.id, msg.title);
       ce.text = _stream[msg.id];
       chatUpdate(msg.id, msg);

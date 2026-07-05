@@ -17,6 +17,7 @@ _DEFAULTS = {
     "stt_model": os.environ.get("WHISPER_MODEL", "small"),   # Sprach-Modell (Whisper)
     "tts_voice": "de_DE-thorsten-medium",   # Sprachausgabe-Stimme (Piper)
     "rag_enabled": False,   # RAG: Vault-Wissen als Kontext in Antworten einbeziehen
+    "wake_word": "",   # Freihand-Weckwort (leer = aus); danach folgt der Befehl
     "anthropic_key": "",
     "anthropic_model": "claude-sonnet-5",
     "openai_key": "",
@@ -55,6 +56,7 @@ def public() -> dict:
         "stt_model": d["stt_model"],
         "tts_voice": d["tts_voice"],
         "rag_enabled": d["rag_enabled"],
+        "wake_word": d["wake_word"],
         "anthropic_model": d["anthropic_model"],
         "openai_model": d["openai_model"],
         "anthropic_key_set": bool(d["anthropic_key"]),
