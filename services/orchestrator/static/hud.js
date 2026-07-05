@@ -85,11 +85,10 @@
     if (empty) empty.remove();
     const wrap = document.createElement("div");
     wrap.className = "chat-entry";
-    const u = document.createElement("div");
-    u.className = "chat-u"; u.textContent = question || "…";
+    // Nur die Antwort zeigen (keine Frage-Blase); Bot beginnt mit „denkt …"
     const b = document.createElement("div");
-    b.className = "chat-b"; b.textContent = "…";
-    wrap.appendChild(u); wrap.appendChild(b);
+    b.className = "chat-b"; b.textContent = "denkt …";
+    wrap.appendChild(b);
     chatlog.appendChild(wrap);
     while (chatlog.childElementCount > 30) chatlog.removeChild(chatlog.firstChild);
     _chat[id] = { botEl: b, wrapEl: wrap, question: question || "…", text: "", tools: [] };
@@ -119,14 +118,13 @@
   }
 
   const _stream = {};   // task-id → akkumulierter Text (Live-Streaming)
+  // Kein schwebendes Kärtchen mehr über dem Gehirn – Fortschritt/Antwort nur im Verlauf.
   function handleTask(msg) {
-    if (msg.state === "queued") chatEnsure(msg.id, msg.q || msg.title);
-    taskcard.hidden = false;
-    taskTitle.textContent = (msg.title || msg.id || "").toUpperCase();
+    if (["queued", "thinking", "scheduled", "writing"].includes(msg.state)) {
+      chatEnsure(msg.id, msg.q || msg.title);
+    }
     if (msg.state === "stream") {
       _stream[msg.id] = (_stream[msg.id] || "") + (msg.chunk || "");
-      // Nur Status oben zeigen (kein durchlaufender Text) – die Antwort steht im Chat.
-      taskState.textContent = "schreibt …";
       const ce = _chat[msg.id] || chatEnsure(msg.id, msg.title);
       ce.text = _stream[msg.id];
       chatUpdate(msg.id, msg);
@@ -135,25 +133,17 @@
       applyState();
       return;
     }
-    const toolLabels = { web_search: "🔎 sucht im Web …", web_fetch: "🌐 liest Webseite …",
-                         vault_search: "📓 durchsucht Vault …" };
     if (msg.state === "tool") {
-      taskState.textContent = toolLabels[msg.tool] || ("🔧 nutzt " + (msg.tool || "Tool") + " …");
       chatEnsure(msg.id, msg.title); chatUpdate(msg.id, msg);
       activeTasks = Math.max(activeTasks, 1);
       brain.setActiveDomain("research");
       applyState();
       return;
     }
-    const labels = { queued: "eingereiht", scheduled: "geplant · startet …",
-                     thinking: "denkt …", writing: "schreibt …",
-                     done: "fertig ✓", error: "Fehler: " + (msg.error || "") };
-    taskState.textContent = labels[msg.state] || msg.state;
-
     const btn = deck.querySelector(`.deck-btn[data-id="${msg.id}"]`);
     if (["queued", "scheduled", "thinking", "writing"].includes(msg.state)) {
       activeTasks = Math.max(activeTasks, 1);
-      if (msg.domain) brain.setActiveDomain(msg.domain);   // Hirn-Segment aktivieren
+      if (msg.domain) brain.setActiveDomain(msg.domain);
     }
     if (msg.state === "done" || msg.state === "error") {
       if (_chat[msg.id]) {
@@ -167,7 +157,6 @@
       if (btn) btn.classList.remove("running");
       if (activeTasks === 0) brain.setActiveDomain(null);
       if (msg.state === "done") loadVitals();                // Vault hat sich geändert
-      setTimeout(() => { if (activeTasks === 0) taskcard.hidden = true; }, 3500);
     }
     applyState();
   }

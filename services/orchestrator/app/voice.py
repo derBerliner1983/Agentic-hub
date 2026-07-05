@@ -148,7 +148,9 @@ def delete_voice(voice_id: str) -> bool:
 
 
 def _download_voice(voice_id: str, dest) -> bool:
-    """Lädt eine Piper-Stimme (.onnx + .json) von HuggingFace nach."""
+    """Lädt eine Piper-Stimme (.onnx + .json) von HuggingFace nach.
+    Räumt bei Fehler unvollständige Dateien weg (sonst bleibt eine kaputte .onnx)."""
+    dest = Path(dest)
     try:
         lang, name, quality = voice_id.split("-")
         region = lang.split("_")[0]
@@ -158,9 +160,24 @@ def _download_voice(voice_id: str, dest) -> bool:
         import urllib.request
         urllib.request.urlretrieve(base + ".onnx", str(dest))
         urllib.request.urlretrieve(base + ".onnx.json", str(dest) + ".json")
+        # Plausibilitätsprüfung: echtes Modell ist > 1 MB
+        if dest.stat().st_size < 1_000_000:
+            raise RuntimeError("Datei zu klein / unvollständig")
         return True
     except Exception:  # noqa: BLE001
+        for p in (dest, Path(str(dest) + ".json")):
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:  # noqa: BLE001
+                pass
         return False
+
+
+def _voice_ok(onnx: Path) -> bool:
+    """Ist die Stimmen-Datei brauchbar (existiert, groß genug, .json vorhanden)?"""
+    return (onnx.exists() and onnx.stat().st_size > 1_000_000
+            and Path(str(onnx) + ".json").exists())
 
 
 def _resolve_voice_path(vid: str | None = None) -> str:
@@ -169,9 +186,9 @@ def _resolve_voice_path(vid: str | None = None) -> str:
     if vid == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
         return PIPER_VOICE
     onnx = VOICES_DIR / f"{vid}.onnx"
-    if onnx.exists():
+    if _voice_ok(onnx):
         return str(onnx)
-    if _download_voice(vid, onnx) and onnx.exists():
+    if valid_voice_id(vid) and _download_voice(vid, onnx) and _voice_ok(onnx):
         return str(onnx)
     return PIPER_VOICE   # Fallback auf vorinstallierte Stimme
 
@@ -192,12 +209,7 @@ def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:
         return "".join(seg.text for seg in segments).strip()
 
 
-def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
-    """Text → WAV-Bytes via Piper. `voice_id` überschreibt die aktive Stimme
-    (für Vorhören). None, wenn Piper nicht verfügbar."""
-    if not tts_available() or not text.strip():
-        return None
-    voice_path = _resolve_voice_path(voice_id)
+def _piper_say(text: str, voice_path: str) -> bytes:
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "out.wav"
         env = dict(os.environ)
@@ -209,6 +221,23 @@ def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
             cwd=piper_dir, env=env,
         )
         return out.read_bytes()
+
+
+def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
+    """Text → WAV-Bytes via Piper. `voice_id` überschreibt die aktive Stimme
+    (Vorhören). Fällt bei Problemen auf die vorinstallierte Standardstimme zurück."""
+    if not tts_available() or not text.strip():
+        return None
+    voice_path = _resolve_voice_path(voice_id)
+    try:
+        return _piper_say(text, voice_path)
+    except Exception:  # noqa: BLE001 – gewählte Stimme defekt → Standardstimme
+        if voice_path != PIPER_VOICE and Path(PIPER_VOICE).exists():
+            try:
+                return _piper_say(text, PIPER_VOICE)
+            except Exception:  # noqa: BLE001
+                return None
+        return None
 
 
 # --- Sprachbefehl → Task ---------------------------------------------------
