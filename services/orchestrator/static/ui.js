@@ -271,7 +271,7 @@
   }
 
   async function appendModelsAndUsers() {
-    const [me, models, agents, tasks, skills, mcps, settings, voice, tts] = await Promise.all([
+    const [me, models, agents, tasks, skills, mcps, settings, voice, tts, sched2] = await Promise.all([
       fetch("/api/me").then((r) => r.json()).catch(() => ({})),
       fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [], running: [] })),
       fetch("/api/agents").then((r) => r.json()).catch(() => []),
@@ -281,7 +281,17 @@
       fetch("/api/settings").then((r) => r.json()).catch(() => ({})),
       fetch("/api/voice/models").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
       fetch("/api/voice/tts_voices").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
+      fetch("/api/schedule").then((r) => r.json()).catch(() => []),
     ]);
+    const fmtTime = (iso) => { if (!iso) return "—"; const d = new Date(iso);
+      return d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+    const schedRows = (sched2 || []).map((t) => `<div class="mgmt-row">
+        <div><div class="m-title">${esc(t.title)}</div>
+          <div class="m-sub">${esc(t.label)} · nächster: ${fmtTime(t.next)} · zuletzt: ${fmtTime(t.last)}</div></div>
+        <span class="board-spacer"></span>
+        <button class="lnk" data-schedrun="${esc(t.id)}">jetzt</button>
+        <button class="lnk" data-taskedit="${esc(t.id)}">bearbeiten</button></div>`).join("")
+      || '<div class="hint2">keine geplanten Automationen · Zeitplan beim Bearbeiten eines Kurzbefehls setzen</div>';
     const voiceOpts = (voice.options || []).map((m) =>
       `<option value="${esc(m)}" ${m === voice.current ? "selected" : ""}>${esc(m)}</option>`).join("");
     const ttsOpts = (tts.options || []).map((v) =>
@@ -356,6 +366,9 @@
       <div class="hint2">Vordefinierte Kurzbefehle ändern, löschen oder neue anlegen.</div>
       <div id="task-list">${taskRows}</div>
       <button class="btn primary" id="task-new" style="margin-top:8px">＋ Neuer Kurzbefehl</button>
+      <hr/><h3 class="set-h">Zeitplan · Automationen</h3>
+      <div class="hint2">Geplante Kurzbefehle (Cadence). Zeitplan legst du beim Bearbeiten eines Kurzbefehls fest.</div>
+      <div id="sched-list">${schedRows}</div>
       <hr/><h3 class="set-h">Skills</h3>
       <div class="hint2">Wiederverwendbare Prompt-Bausteine für Tasks.</div>
       <div id="skill-list">${skillRows}</div>
@@ -492,6 +505,13 @@
     }; });
     const taskNew = document.getElementById("task-new");
     if (taskNew) taskNew.onclick = () => openBuilder();
+
+    // Automation jetzt ausführen
+    settingsBody.querySelectorAll("[data-schedrun]").forEach((b) => { b.onclick = async () => {
+      await fetch(`/api/tasks/${b.dataset.schedrun}/run`, { method: "POST" }).catch(() => {});
+      b.textContent = "läuft…";
+      setTimeout(() => (b.textContent = "jetzt"), 1500);
+    }; });
 
     // Skills: neu (öffnet Builder mit Skill-Formular)
     const skillNew = document.getElementById("skill-new");

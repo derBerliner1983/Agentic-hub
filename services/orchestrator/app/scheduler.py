@@ -37,6 +37,60 @@ def _due(sched: dict, last: dt.datetime | None, now: dt.datetime) -> bool:
     return False
 
 
+def _next(sched: dict, last: dt.datetime | None, now: dt.datetime) -> dt.datetime | None:
+    """Nächster geplanter Lauf (Schätzung) für die Anzeige."""
+    if not isinstance(sched, dict):
+        return None
+    kind = sched.get("type")
+    if kind == "interval":
+        mins = int(sched.get("minutes", 0) or 0)
+        if mins <= 0:
+            return None
+        if last is None:
+            return now
+        return last + dt.timedelta(minutes=mins)
+    if kind == "daily":
+        try:
+            hh, mm = str(sched.get("time", "07:00")).split(":")
+            target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+        except Exception:  # noqa: BLE001
+            return None
+        if now >= target and (last is None or last < target):
+            return now
+        if now >= target:
+            target += dt.timedelta(days=1)
+        return target
+    return None
+
+
+def overview() -> list[dict]:
+    """Alle geplanten Tasks mit letztem/nächstem Lauf – für die Scheduler-UI."""
+    now = dt.datetime.now()
+    state = store.load("schedule.json", {}) or {}
+    out = []
+    for t in tasks_mod.all_tasks():
+        sched = t.get("schedule")
+        if not sched:
+            continue
+        last_iso = state.get(t["id"])
+        last = None
+        if last_iso:
+            try:
+                last = dt.datetime.fromisoformat(last_iso)
+            except Exception:  # noqa: BLE001
+                last = None
+        nxt = _next(sched, last, now)
+        label = ""
+        if sched.get("type") == "interval":
+            label = f"alle {sched.get('minutes')} Min"
+        elif sched.get("type") == "daily":
+            label = f"täglich {sched.get('time')}"
+        out.append({"id": t["id"], "title": t["title"], "domain": t.get("domain", "ops"),
+                    "schedule": sched, "label": label, "last": last_iso,
+                    "next": nxt.isoformat() if nxt else None})
+    return out
+
+
 async def scheduler_loop(bus: EventBus) -> None:
     while True:
         await asyncio.sleep(60)

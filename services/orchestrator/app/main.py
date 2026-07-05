@@ -374,6 +374,12 @@ async def api_ask(request: Request, data: dict = Body(...)) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/schedule")
+async def api_schedule() -> JSONResponse:
+    from . import scheduler as scheduler_mod
+    return JSONResponse(scheduler_mod.overview())
+
+
 @app.get("/api/audit")
 async def api_audit(request: Request) -> JSONResponse:
     if not _require_admin(request):
