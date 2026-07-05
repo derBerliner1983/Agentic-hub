@@ -88,6 +88,15 @@
       applyState();
       return;
     }
+    const toolLabels = { web_search: "🔎 sucht im Web …", web_fetch: "🌐 liest Webseite …",
+                         vault_search: "📓 durchsucht Vault …" };
+    if (msg.state === "tool") {
+      taskState.textContent = toolLabels[msg.tool] || ("🔧 nutzt " + (msg.tool || "Tool") + " …");
+      activeTasks = Math.max(activeTasks, 1);
+      brain.setActiveDomain("research");
+      applyState();
+      return;
+    }
     const labels = { queued: "eingereiht", scheduled: "geplant · startet …",
                      thinking: "denkt …", writing: "schreibt …",
                      done: "fertig ✓", error: "Fehler: " + (msg.error || "") };

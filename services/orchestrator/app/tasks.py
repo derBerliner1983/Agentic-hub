@@ -119,13 +119,32 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
 
     await emit("thinking")
     result = ""
-    try:
-        async for chunk in provider.generate_stream(prompt):
-            result += chunk
-            await emit("stream", chunk=chunk, step=1, steps=1)
-    except Exception as exc:  # noqa: BLE001
-        await emit("error", error=str(exc))
-        return
+    used_tools = hasattr(provider, "chat_with_tools")
+    if used_tools:
+        # Werkzeug-fähig: das Modell darf Web-Suche/Vault/MCP nutzen
+        from . import tools as tools_mod
+
+        async def on_tool(ev):
+            await emit("tool", tool=ev.get("tool", ""))
+        try:
+            result = await provider.chat_with_tools(
+                prompt, tools_mod.toolset(), tools_mod.execute,
+                system="Du bist ein hilfreicher Assistent mit Werkzeugen (Web-Suche, "
+                       "Web-Abruf, Vault-Suche). Nutze sie bei aktuellen Fakten/Zahlen. "
+                       "Antworte prägnant auf Deutsch.",
+                on_event=on_tool)
+            await emit("stream", chunk=result, step=1, steps=1)
+        except Exception:  # noqa: BLE001 – Fallback ohne Tools
+            used_tools = False
+            result = ""
+    if not used_tools:
+        try:
+            async for chunk in provider.generate_stream(prompt):
+                result += chunk
+                await emit("stream", chunk=chunk, step=1, steps=1)
+        except Exception as exc:  # noqa: BLE001
+            await emit("error", error=str(exc))
+            return
 
     await emit("writing")
     stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")

@@ -120,6 +120,54 @@ class OllamaProvider(Provider):
             resp.raise_for_status()
             return resp.json().get("response", "")
 
+    async def chat_with_tools(self, prompt: str, tools: list[dict], execute,
+                              model: str | None = None, system: str | None = None,
+                              on_event=None, max_rounds: int = 5) -> str:
+        """Werkzeug-fähiger Chat: das Modell darf Tools aufrufen (Ollama /api/chat).
+        `execute(name, args) -> str` (async) führt ein Tool aus; `on_event(dict)`
+        (async, optional) meldet Tool-Aufrufe ans HUD. Gibt die finale Antwort zurück."""
+        if model is None:
+            model = self.default_model or None
+        if model is None:
+            models = await self._models()
+            if not models:
+                raise RuntimeError("Kein Ollama-Modell verfügbar.")
+            model = models[0]
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        async with httpx.AsyncClient(timeout=None) as client:
+            for _ in range(max_rounds):
+                resp = await client.post(f"{self.base_url}/api/chat", json={
+                    "model": model, "messages": messages, "tools": tools, "stream": False})
+                resp.raise_for_status()
+                msg = resp.json().get("message", {}) or {}
+                calls = msg.get("tool_calls") or []
+                if not calls:
+                    return msg.get("content", "")
+                # Assistant-Turn mit Tool-Aufrufen anhängen
+                messages.append({"role": "assistant", "content": msg.get("content", ""),
+                                 "tool_calls": calls})
+                for call in calls:
+                    fn = call.get("function", {}) or {}
+                    name = fn.get("name", "")
+                    args = fn.get("arguments", {}) or {}
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:  # noqa: BLE001
+                            args = {}
+                    if on_event:
+                        await on_event({"tool": name, "args": args})
+                    result = await execute(name, args)
+                    messages.append({"role": "tool", "content": str(result)[:6000]})
+            # Nach max. Runden: eine finale Antwort ohne Tools erzwingen
+            resp = await client.post(f"{self.base_url}/api/chat", json={
+                "model": model, "messages": messages, "stream": False})
+            resp.raise_for_status()
+            return resp.json().get("message", {}).get("content", "")
+
     async def generate_stream(self, prompt: str, model: str | None = None,
                               system: str | None = None):
         if model is None:
