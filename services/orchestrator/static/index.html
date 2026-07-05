@@ -30,9 +30,10 @@
       <div class="viewswitch" id="viewswitch">
         <button data-view="brain" class="active">GEHIRN</button>
         <button data-view="board">BOARD</button>
+        <button data-view="notes">NOTIZEN</button>
+        <button data-view="settings">EINSTELLUNGEN</button>
       </div>
       <div class="topbar-end">
-        <button class="mini-btn" id="btn-settings-top" title="Einstellungen">⚙</button>
         <button class="mini-btn" id="btn-update-top" title="System aktualisieren">↻</button>
         <button class="theme-toggle" id="theme-toggle" title="Hell/Dunkel">☀</button>
         <div class="clock" id="clock">--:--</div>
@@ -75,7 +76,6 @@
       <div class="deck-head">COMMAND DECK <span id="deck-meta">· offline</span>
         <span class="deck-actions">
           <button class="mini-btn" id="btn-build" title="Task/Skill bauen">＋</button>
-          <button class="mini-btn" id="btn-settings" title="Provider-Einstellungen">⚙</button>
           <button class="mini-btn" id="btn-update" title="Aus Git aktualisieren">↻</button>
         </span>
       </div>
@@ -90,7 +90,6 @@
         <button class="mic-btn" id="mic-btn">🎤 Gedrückt halten zum Sprechen</button>
       </div>
     </aside>
-  </div>
 
     <!-- BOARD-Ansicht (Kanban, autonome Projekte) -->
     <section class="board-view" id="board-view">
@@ -109,7 +108,38 @@
       <div class="board-log" id="board-log" title="Live-Log"></div>
     </section>
 
-  <!-- Modal-Overlay für Builder / Settings -->
+    <!-- NOTIZEN-Ansicht (Vault-Memory ansehen & bearbeiten) -->
+    <section class="page-view notes-view" id="notes-view">
+      <div class="page-head">
+        <h2>Vault-Notizen <span class="v-meta" id="notes-count"></span></h2>
+        <span class="board-spacer"></span>
+        <input id="notes-search" placeholder="suchen…" />
+        <button class="btn" id="note-new">＋ Neue Notiz</button>
+      </div>
+      <div class="notes-split">
+        <div class="notes-list" id="notes-list"></div>
+        <div class="notes-editor" id="notes-editor">
+          <div class="notes-empty" id="notes-empty">Links eine Notiz wählen oder eine neue anlegen.</div>
+          <div class="notes-edit-wrap" id="notes-edit-wrap" hidden>
+            <div class="notes-edit-bar">
+              <span class="notes-path" id="notes-path">—</span>
+              <span class="board-spacer"></span>
+              <button class="btn" id="note-save">Speichern</button>
+              <button class="btn" id="note-del" title="Notiz löschen">🗑</button>
+            </div>
+            <textarea id="note-body" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EINSTELLUNGEN-Ansicht (Provider, Modelle, Tasks, Skills, MCP, Sicherheit) -->
+    <section class="page-view settings-view" id="settings-view">
+      <div class="settings-body" id="settings-body"></div>
+    </section>
+  </div>
+
+  <!-- Modal-Overlay für Builder / Detail -->
   <div class="modal-root" id="modal-root" hidden>
     <div class="modal" id="modal">
       <div class="modal-head"><span id="modal-title">—</span>
@@ -123,5 +153,6 @@
   <script src="/voice.js"></script>
   <script src="/ui.js"></script>
   <script src="/board.js"></script>
+  <script src="/notes.js"></script>
 </body>
 </html>

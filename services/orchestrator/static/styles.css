@@ -176,11 +176,52 @@ body[data-state="idle"]    .statusline b { color: var(--accent); }
 body[data-state="working"] .statusline b { color: var(--info); }
 body[data-state="offline"] .statusline b { color: var(--subtle); }
 
-/* ── Board ──────────────────────────────── */
-.board-view { display: none; grid-column: 1 / -1; grid-row: 2; flex-direction: column;
+/* ── Seiten-Ansichten (Board / Notizen / Einstellungen) ──── */
+.board-view, .page-view { display: none; grid-column: 1 / -1; grid-row: 2; flex-direction: column;
   padding: 18px 22px; overflow: hidden; }
-body.view-board .vitals, body.view-board .stage, body.view-board .deck { display: none; }
-body.view-board .board-view { display: flex; }
+/* Nur in der GEHIRN-Ansicht die 3-Spalten sichtbar; sonst die passende Seite */
+body[data-view="board"] .vitals, body[data-view="board"] .stage, body[data-view="board"] .deck,
+body[data-view="notes"] .vitals, body[data-view="notes"] .stage, body[data-view="notes"] .deck,
+body[data-view="settings"] .vitals, body[data-view="settings"] .stage, body[data-view="settings"] .deck {
+  display: none; }
+body[data-view="board"] .board-view { display: flex; }
+body[data-view="notes"] .notes-view { display: flex; }
+body[data-view="settings"] .settings-view { display: flex; }
+
+/* ── Seiten-Kopf (Notizen/Einstellungen) ── */
+.page-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.page-head h2 { font-size: 16px; font-weight: 700; }
+.page-head input { background: var(--surface); border: 1px solid var(--border); color: var(--fg);
+  font-family: var(--font); font-size: 12.5px; padding: 7px 12px; border-radius: var(--r-md); }
+
+/* ── Notizen ── */
+.notes-split { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 14px;
+  flex: 1; min-height: 0; }
+.notes-list { overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--sunken); }
+.note-item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.note-item:hover { background: var(--accent-soft); }
+.note-item.active { background: var(--accent-soft); border-left: 3px solid var(--accent); }
+.note-item .n-name { font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.note-item .n-meta { font-size: 10.5px; color: var(--subtle); margin-top: 2px; }
+.notes-editor { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  display: flex; flex-direction: column; overflow: hidden; }
+.notes-empty { margin: auto; color: var(--subtle); font-size: 13px; }
+.notes-edit-wrap { display: flex; flex-direction: column; height: 100%; }
+.notes-edit-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); }
+.notes-path { font-family: var(--mono); font-size: 11px; color: var(--subtle); }
+.notes-edit-wrap textarea { flex: 1; border: 0; background: transparent; color: var(--fg);
+  font-family: var(--mono); font-size: 13px; line-height: 1.6; padding: 16px; resize: none; outline: none; }
+
+/* ── Einstellungen als Seite ── */
+.settings-view { overflow-y: auto; }
+.settings-body { max-width: 860px; width: 100%; margin: 0 auto; }
+.settings-body .set-h { font-size: 14px; font-weight: 700; margin: 4px 0 6px; }
+.mgmt-row { display: flex; align-items: center; gap: 8px; padding: 8px 0;
+  border-bottom: 1px solid var(--border); }
+.mgmt-row .m-title { font-weight: 600; font-size: 12.5px; }
+.mgmt-row .m-sub { font-size: 11px; color: var(--subtle); }
 .board-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .board-spacer { flex: 1; }
 .board-bar select { background: var(--surface); border: 1px solid var(--border); color: var(--fg);
@@ -295,6 +336,8 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
   .deck { border-left: 0; border-top: 1px solid var(--border); }
   .stage { min-height: 40vh; }
   .b-cols { grid-template-columns: 1fr; }
+  .notes-split { grid-template-columns: 1fr; }
+  .notes-list { max-height: 30vh; }
 }
 
 /* ── Responsive: Handy ──────────────────── */

@@ -15,6 +15,9 @@
   const theme = () => (document.documentElement.dataset.theme === "light" ? "light" : "dark");
   // Domänen im Uhrzeigersinn -> Winkelsektoren
   const DOMAINS = ["inbox", "research", "content", "ops"];
+  // Knotenzahl wächst mit dem „Wissen" (Notizen + Skills + MCP), bis zu einem Maximum.
+  const BASE_NODES = 80;
+  const MAX_NODES = 320;
 
   class Brain {
     constructor(canvas) {
@@ -26,7 +29,7 @@
       this.pulse = 0;
       this.nodes = [];
       this.t = 0;
-      this._build(160);
+      this._build(BASE_NODES);
       this._resize();
       window.addEventListener("resize", () => this._resize());
       requestAnimationFrame(() => this._loop());
@@ -34,6 +37,14 @@
 
     setState(state) { if (["offline", "idle", "working"].includes(state)) this.state = state; }
     setActiveDomain(domain) { this.activeDomain = domain || null; }
+
+    // „Wissen" → mehr Knoten (das Gehirn wirkt klüger), gedeckelt auf MAX_NODES.
+    setKnowledge(k) {
+      const target = Math.max(BASE_NODES, Math.min(MAX_NODES, BASE_NODES + Math.round((k || 0) * 2)));
+      if (target === this.nodes.length) return;
+      if (target > this.nodes.length) this._build(target - this.nodes.length);
+      else this.nodes.length = target;   // schrumpfen
+    }
 
     _build(n) {
       for (let i = 0; i < n; i++) {

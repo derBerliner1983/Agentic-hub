@@ -14,7 +14,7 @@ from .tasks import run_task, task_list, get_task, save_task, delete_task
 from .vitals import build_vitals
 from . import (auth, audit, voice, executor, backup as backup_mod, board as board_mod,
                worker as worker_mod, settings as settings_mod, skills as skills_mod,
-               agents as agents_mod)
+               agents as agents_mod, mcp as mcp_mod, notes as notes_mod)
 from .projects import run_project
 
 FORCE_HTTPS = os.environ.get("FORCE_HTTPS") == "1"
@@ -32,11 +32,24 @@ def provider():
     return settings_mod.build_provider()
 
 
+def _knowledge() -> int:
+    """„Wissen" des Gehirns: Vault-Notizen + Skills + eingebundene MCPs.
+    Skills/MCPs zählen stärker (aktiv angewandtes Können)."""
+    from .vitals import _md_files
+    try:
+        notes = len(_md_files())
+    except Exception:  # noqa: BLE001
+        notes = 0
+    sk = len(skills_mod.list_skills())
+    mc = len([m for m in mcp_mod.list_mcp() if m.get("enabled", True)])
+    return notes + sk * 3 + mc * 4
+
+
 async def _status_snapshot() -> dict:
     p = provider()
     health = await p.health()
     return {"type": "status", "active_provider": p.name, "connected": health["connected"],
-            "providers": [health], "tasks": task_list()}
+            "providers": [health], "tasks": task_list(), "knowledge": _knowledge()}
 
 
 async def _status_poller() -> None:
@@ -301,7 +314,10 @@ async def api_status() -> JSONResponse:
 @app.get("/api/vitals")
 async def api_vitals() -> JSONResponse:
     health = await provider().health()
-    model = health["models"][0] if health["models"] else None
+    models = health["models"]
+    active = (settings_mod.get().get("ollama_model") or "").strip()
+    # Aktives Modell bevorzugen, sonst das erste verfügbare
+    model = active if active and active in models else (models[0] if models else None)
     return JSONResponse(build_vitals(model))
 
 
@@ -381,31 +397,57 @@ async def api_models() -> JSONResponse:
                          "reachable": (await o.health())["reachable"]})
 
 
+# Bekannte Ollama-Library-Modelle (lokale Vorschläge ohne HuggingFace)
+_OLLAMA_LIB = [
+    "llama3.3", "llama3.2", "llama3.2:1b", "llama3.2:3b", "llama3.1", "llama3.1:8b",
+    "llama3.1:70b", "qwen2.5", "qwen2.5:7b", "qwen2.5:14b", "qwen2.5-coder",
+    "qwen2.5-coder:7b", "qwen2.5-coder:14b", "gemma2", "gemma2:2b", "gemma2:9b",
+    "gemma2:27b", "gemma3", "phi3", "phi3.5", "mistral", "mistral-nemo", "mixtral",
+    "deepseek-coder-v2", "deepseek-r1", "codellama", "starcoder2", "nomic-embed-text",
+]
+
+
+async def _hf_search(q: str) -> list[dict]:
+    import httpx
+    # HuggingFace-IDs nutzen Bindestriche – Leerzeichen entsprechend normalisieren
+    variants = [q]
+    if " " in q:
+        variants += [q.replace(" ", "-"), q.replace(" ", "")]
+    seen, out = set(), []
+    async with httpx.AsyncClient(timeout=6.0, headers={"User-Agent": "VAULT/1.0"}) as client:
+        for term in variants:
+            try:
+                r = await client.get(
+                    "https://huggingface.co/api/models",
+                    params={"search": term, "filter": "gguf", "sort": "downloads",
+                            "direction": "-1", "limit": "20"})
+                r.raise_for_status()
+                data = r.json()
+            except Exception:  # noqa: BLE001
+                continue
+            for m in data:
+                mid = m.get("id") or m.get("modelId")
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                out.append({"id": mid, "pull": f"hf.co/{mid}",
+                            "downloads": m.get("downloads", 0), "source": "hf"})
+            if out:
+                break
+    return out
+
+
 @app.get("/api/models/search")
 async def api_models_search(q: str = "") -> JSONResponse:
-    """Live-Suche auf HuggingFace nach GGUF-Modellen (für die Modell-Eingabe)."""
+    """Live-Suche: erst lokale Ollama-Library, dann HuggingFace (GGUF)."""
     q = (q or "").strip()
     if len(q) < 3:
         return JSONResponse({"results": []})
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            r = await client.get(
-                "https://huggingface.co/api/models",
-                params={"search": q, "filter": "gguf", "sort": "downloads",
-                        "direction": "-1", "limit": "20"},
-                headers={"User-Agent": "VAULT/1.0"})
-            r.raise_for_status()
-            data = r.json()
-    except Exception:  # noqa: BLE001 – offline/kein Netz → einfach leer
-        return JSONResponse({"results": []})
-    out = []
-    for m in data:
-        mid = m.get("id") or m.get("modelId")
-        if not mid:
-            continue
-        out.append({"id": mid, "pull": f"hf.co/{mid}", "downloads": m.get("downloads", 0)})
-    return JSONResponse({"results": out})
+    ql = q.lower().replace(" ", "")
+    lib = [{"id": m, "pull": m, "downloads": None, "source": "ollama"}
+           for m in _OLLAMA_LIB if ql in m.replace(" ", "").lower()][:8]
+    hf = await _hf_search(q)
+    return JSONResponse({"results": lib + hf})
 
 
 async def _pull_and_refresh(name: str) -> None:
@@ -437,6 +479,87 @@ async def api_model_delete(request: Request, data: dict = Body(...)) -> JSONResp
     ok = await settings_mod.ollama_provider().delete_model(name)
     if ok:
         audit.log(getattr(request.state, "username", "-"), "model_delete", name)
+    return JSONResponse({"ok": ok})
+
+
+@app.post("/api/models/active")
+async def api_model_active(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Aktives Standard-Modell wählen (für Tasks/Projekte)."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    name = (data.get("name") or "").strip()
+    settings_mod.update({"ollama_model": name})
+    audit.log(getattr(request.state, "username", "-"), "model_active", name)
+    try:
+        await bus.publish(await _status_snapshot())
+    except Exception:  # noqa: BLE001
+        pass
+    return JSONResponse({"ok": True, "active": name})
+
+
+# ---- MCP-Server-Registry ---------------------------------------------------
+@app.get("/api/mcp")
+async def api_mcp_list() -> JSONResponse:
+    return JSONResponse(mcp_mod.list_mcp())
+
+
+@app.post("/api/mcp")
+async def api_mcp_save(request: Request, entry: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    res = mcp_mod.save_mcp(entry)
+    audit.log(getattr(request.state, "username", "-"), "mcp_save", res["id"])
+    try:
+        await bus.publish(await _status_snapshot())   # zählt zum Wissen → Gehirn wächst
+    except Exception:  # noqa: BLE001
+        pass
+    return JSONResponse(res)
+
+
+@app.delete("/api/mcp/{mcp_id}")
+async def api_mcp_delete(request: Request, mcp_id: str) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    ok = mcp_mod.delete_mcp(mcp_id)
+    try:
+        await bus.publish(await _status_snapshot())
+    except Exception:  # noqa: BLE001
+        pass
+    return JSONResponse({"ok": ok})
+
+
+# ---- Vault-Notizen (Memory im Browser bearbeiten) -------------------------
+@app.get("/api/notes")
+async def api_notes_list() -> JSONResponse:
+    return JSONResponse(notes_mod.list_notes())
+
+
+@app.get("/api/notes/read")
+async def api_notes_read(path: str = "") -> JSONResponse:
+    n = notes_mod.read_note(path)
+    return JSONResponse(n or {"error": "nicht gefunden"}, status_code=200 if n else 404)
+
+
+@app.post("/api/notes/save")
+async def api_notes_save(request: Request, data: dict = Body(...)) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    res = notes_mod.write_note(data.get("path", ""), data.get("content", ""))
+    if res:
+        audit.log(getattr(request.state, "username", "-"), "note_save", data.get("path", ""))
+        try:
+            await bus.publish(await _status_snapshot())   # mehr Notizen → mehr Wissen
+        except Exception:  # noqa: BLE001
+            pass
+    return JSONResponse(res or {"error": "ungültiger Pfad (.md, innerhalb Vault)"},
+                        status_code=200 if res else 400)
+
+
+@app.delete("/api/notes")
+async def api_notes_delete(request: Request, path: str = "") -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    ok = notes_mod.delete_note(path)
     return JSONResponse({"ok": ok})
 
 
@@ -591,7 +714,12 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
     task_id = voice.match_task(text)
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
-    return JSONResponse({"ok": True, "text": text, "task": task_id})
+        return JSONResponse({"ok": True, "text": text, "task": task_id})
+    # Kein vordefinierter Kurzbefehl → freien Sprachbefehl als Projekt ausführen
+    if text and len(text.strip()) >= 3:
+        asyncio.create_task(run_project(text.strip(), settings_mod.ollama_provider(), bus))
+        return JSONResponse({"ok": True, "text": text, "task": None, "project": True})
+    return JSONResponse({"ok": True, "text": text, "task": None})
 
 
 @app.get("/api/voice/tts")

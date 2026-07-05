@@ -8,8 +8,9 @@ from .base import Provider, Health
 class OllamaProvider(Provider):
     name = "ollama"
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, default_model: str = ""):
         self.base_url = base_url.rstrip("/")
+        self.default_model = (default_model or "").strip()
 
     async def _models(self) -> list[str]:
         # Etwas großzügiger Timeout: der erste Request nach Container-Start
@@ -105,6 +106,8 @@ class OllamaProvider(Provider):
     async def generate(self, prompt: str, model: str | None = None,
                        system: str | None = None) -> str:
         if model is None:
+            model = self.default_model or None
+        if model is None:
             models = await self._models()
             if not models:
                 raise RuntimeError("Kein Ollama-Modell verfügbar.")
@@ -119,6 +122,8 @@ class OllamaProvider(Provider):
 
     async def generate_stream(self, prompt: str, model: str | None = None,
                               system: str | None = None):
+        if model is None:
+            model = self.default_model or None
         if model is None:
             models = await self._models()
             if not models:

@@ -13,6 +13,7 @@ from .providers.openai import OpenAIProvider
 _DEFAULTS = {
     "active_provider": "ollama",
     "ollama_url": os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434"),
+    "ollama_model": "",   # aktives Standard-Modell (leer = erstes verfügbares)
     "anthropic_key": "",
     "anthropic_model": "claude-sonnet-5",
     "openai_key": "",
@@ -47,6 +48,7 @@ def public() -> dict:
     return {
         "active_provider": d["active_provider"],
         "ollama_url": d["ollama_url"],
+        "ollama_model": d["ollama_model"],
         "anthropic_model": d["anthropic_model"],
         "openai_model": d["openai_model"],
         "anthropic_key_set": bool(d["anthropic_key"]),
@@ -65,9 +67,10 @@ def build_provider() -> Provider:
         return AnthropicProvider(d["anthropic_key"], d["anthropic_model"])
     if ap == "openai" and d["openai_key"]:
         return OpenAIProvider(d["openai_key"], d["openai_model"])
-    return OllamaProvider(d["ollama_url"])
+    return OllamaProvider(d["ollama_url"], d.get("ollama_model") or "")
 
 
 def ollama_provider() -> OllamaProvider:
     """Immer ein Ollama-Adapter (für das Agent-Mesh / Modell-Laden)."""
-    return OllamaProvider(get()["ollama_url"])
+    d = get()
+    return OllamaProvider(d["ollama_url"], d.get("ollama_model") or "")

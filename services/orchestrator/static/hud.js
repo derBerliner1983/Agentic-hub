@@ -67,6 +67,7 @@
 
   function handleStatus(msg) {
     connected = !!msg.connected;
+    if (typeof msg.knowledge === "number") brain.setKnowledge(msg.knowledge);
     renderDeck(msg.tasks || []);
     setDeckEnabled();
     applyState();

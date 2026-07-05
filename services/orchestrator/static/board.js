@@ -22,17 +22,20 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  // ---- View-Umschalter ----
+  // ---- View-Umschalter (GEHIRN / BOARD / NOTIZEN / EINSTELLUNGEN) ----
   document.getElementById("viewswitch").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-view]");
     if (!b) return;
     document.querySelectorAll("#viewswitch button").forEach((x) => x.classList.remove("active"));
     b.classList.add("active");
-    const board = b.dataset.view === "board";
-    document.body.classList.toggle("view-board", board);
-    visible = board;
-    if (board) { load(); startPoll(); } else { stopPoll(); }
+    const v = b.dataset.view;
+    document.body.dataset.view = v;
+    document.body.classList.toggle("view-board", v === "board");   // Alt-Kompatibilität
+    visible = v === "board";
+    if (visible) { load(); startPoll(); } else { stopPoll(); }
+    window.dispatchEvent(new CustomEvent("vault-view", { detail: v }));
   });
+  document.body.dataset.view = "brain";
 
   function startPoll() { stopPoll(); poll = setInterval(() => visible && load(), 4000); }
   function stopPoll() { if (poll) clearInterval(poll); poll = null; }

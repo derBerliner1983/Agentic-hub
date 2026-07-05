@@ -105,10 +105,12 @@
       const r = await fetch("/api/voice/command", { method: "POST", body: fd });
       const j = await r.json();
       if (!j.ok) { setState("STT.ERROR"); textEl.textContent = j.error || "Fehler"; return; }
-      textEl.textContent = "„" + (j.text || "…") + "”" + (j.task ? "  → " + j.task : "  (kein Task erkannt)");
+      const how = j.task ? "  → " + j.task : (j.project ? "  → Projekt läuft" : "  (nichts verstanden)");
+      textEl.textContent = "„" + (j.text || "…") + "”" + how;
       setState("TTS.STANDBY");
       // Gesprochene Bestätigung
-      const spoken = j.task ? `Starte ${j.task.replace("-", " ")}.` : "Kein Befehl erkannt.";
+      const spoken = j.task ? `Starte ${j.task.replace("-", " ")}.`
+        : (j.project ? "Ich arbeite daran." : "Ich habe nichts verstanden.");
       speak(spoken);
     } catch (e) {
       setState("STT.ERROR"); textEl.textContent = String(e);
