@@ -400,6 +400,7 @@
     const labels = settings.model_labels || {};
     const mlabel = (n) => labels[n] || n;                 // Anzeigename
     const runningNames = new Set((models.running || []).map((m) => m.name));
+    const running = (models.running || []).map((m) => `${esc(mlabel(m.name))} (VRAM ${gb(m.size_vram || 0)})`).join(" · ") || "keine geladen";
     // Modelle als Kacheln (wie Skills): Anzeigename, Größe, geladen?, umbenennen/löschen
     const availList = (models.available || []).map((m) => `<div class="skill-tile" data-model2="${esc(m.name)}">
         <div class="skill-top">
