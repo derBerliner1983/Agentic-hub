@@ -119,6 +119,15 @@ async def security_headers(request: Request, call_next):
     return resp
 
 
+def _voice_token() -> str:
+    """Lokaler Token für den Sprach-Daemon (Datei instance/voice_token)."""
+    try:
+        with open(os.path.join(os.environ.get("STORE_DIR", "/instance"), "voice_token")) as f:
+            return f.read().strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     if not auth.required():
@@ -126,6 +135,13 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if path in _OPEN_PATHS or any(path.startswith(p) for p in _OPEN_PREFIXES):
         return await call_next(request)
+    # Lokaler Sprach-Daemon (openWakeWord am Server) darf Voice-Endpoints per Token nutzen
+    if path.startswith("/api/voice/"):
+        tok = _voice_token()
+        if tok and request.headers.get("x-vault-token") == tok:
+            request.state.username = "voice-daemon"
+            request.state.role = "user"
+            return await call_next(request)
     if not auth.configured():
         if path.startswith("/api/"):
             return JSONResponse({"error": "setup required"}, status_code=401)

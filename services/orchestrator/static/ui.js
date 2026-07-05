@@ -494,6 +494,18 @@
         <button class="btn" id="wake-save">Weckwort setzen</button>
       </div>
       <div class="hint2" id="wake-msg"></div>
+      <hr/><h3 class="set-h">Freihand am Server (Weckwort · 100 % lokal)</h3>
+      <div class="hint2">Der Server hört über sein <b>eigenes Mikro</b> auf ein Weckwort (openWakeWord), beantwortet lokal und spricht über die <b>Server-Lautsprecher</b> – ohne Browser, ohne Cloud, auch iPhone-unabhängig. Einmal am Server einrichten:
+        <code>sudo scripts/setup-voice-daemon.sh</code></div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <select id="oww-model" style="flex:1">
+          ${["hey_jarvis", "alexa", "hey_mycroft", "hey_rhasspy"].map((m) => `<option value="${m}" ${settings.owakeword_model === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+        <span class="hint2">Empfindlichkeit</span>
+        <input id="oww-th" type="number" step="0.05" min="0.1" max="0.95" value="${esc(settings.owakeword_threshold ?? 0.5)}" style="max-width:80px"/>
+        <button class="btn" id="oww-save">Speichern</button>
+      </div>
+      <div class="hint2">Läuft der Dienst: <code>systemctl status vault-voice</code> · Log: <code>journalctl -u vault-voice -f</code>. Weckwort greift nach dem Speichern automatisch.</div>
       <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
       ${secHtml(sec)}
       <div class="hint2" style="margin-top:8px">App-Update: holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
@@ -753,6 +765,16 @@
         body: JSON.stringify({ wake_word }) }).catch(() => {});
       wakeSave.textContent = "✓ gesetzt";
       setTimeout(() => (wakeSave.textContent = "Weckwort setzen"), 1500);
+    };
+
+    // Server-Weckwort (openWakeWord) speichern
+    const owwSave = document.getElementById("oww-save");
+    if (owwSave) owwSave.onclick = async () => {
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owakeword_model: document.getElementById("oww-model").value,
+          owakeword_threshold: parseFloat(document.getElementById("oww-th").value) || 0.5 }) }).catch(() => {});
+      owwSave.textContent = "✓ gespeichert";
+      setTimeout(() => (owwSave.textContent = "Speichern"), 1500);
     };
 
     // TTS-Stimme setzen (nach dem Vorhören bestätigen)
