@@ -930,9 +930,9 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "text": text, "task": task_id})
-    # … alles andere wird beantwortet und die Antwort zurückgegeben (zum Vorlesen)
+    # … alles andere wird beantwortet und die Antwort zurückgegeben (nur sprechen)
     if text and len(text.strip()) >= 2:
-        answer = await run_adhoc(text.strip(), provider(), bus)
+        answer = await run_adhoc(text.strip(), provider(), bus, channel="voice")
         return JSONResponse({"ok": True, "text": text, "task": None,
                              "answered": True, "answer": answer or ""})
     return JSONResponse({"ok": True, "text": text, "task": None})
@@ -948,7 +948,7 @@ async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONRespon
     if task_id:
         asyncio.create_task(run_task(task_id, provider(), bus))
         return JSONResponse({"ok": True, "task": task_id})
-    answer = await run_adhoc(text, provider(), bus)
+    answer = await run_adhoc(text, provider(), bus, channel="voice")
     return JSONResponse({"ok": True, "answered": True, "answer": answer or ""})
 
 

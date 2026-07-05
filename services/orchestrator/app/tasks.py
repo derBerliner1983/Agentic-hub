@@ -101,15 +101,15 @@ def _resolve_step_prompt(step: dict) -> str:
 
 
 async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
-                    domain: str = "inbox") -> None:
+                    domain: str = "inbox", channel: str = "text") -> None:
     """Einzelne Ad-hoc-Aufgabe: ein freier Prompt → eine Antwort (gestreamt) →
-    Ergebnis in vault/runs. Kein gespeicherter Task nötig (Schnell-Eingabe)."""
+    Ergebnis in vault/runs. `channel="voice"` = nur sprechen, nicht in den Chat schreiben."""
     title = prompt.strip()[:48] + ("…" if len(prompt.strip()) > 48 else "")
     tid = "adhoc"
 
     async def emit(state: str, **extra):
-        await bus.publish({"type": "task", "id": tid, "title": title,
-                           "domain": domain, "state": state, **extra})
+        await bus.publish({"type": "task", "id": tid, "title": title, "domain": domain,
+                           "state": state, "channel": channel, **extra})
 
     await emit("queued", q=prompt)   # volle Frage für den Chat-Verlauf
     health = await provider.health()

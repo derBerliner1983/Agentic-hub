@@ -118,23 +118,27 @@
   }
 
   const _stream = {};   // task-id → akkumulierter Text (Live-Streaming)
-  // Kein schwebendes Kärtchen mehr über dem Gehirn – Fortschritt/Antwort nur im Verlauf.
+  // Kein schwebendes Kärtchen über dem Gehirn. Sprach-Antworten (channel==="voice")
+  // werden nur gesprochen, NICHT in den Verlauf geschrieben.
   function handleTask(msg) {
-    if (["queued", "thinking", "scheduled", "writing"].includes(msg.state)) {
+    const silent = msg.channel === "voice";
+    if (!silent && ["queued", "thinking", "scheduled", "writing"].includes(msg.state)) {
       chatEnsure(msg.id, msg.q || msg.title);
     }
     if (msg.state === "stream") {
       _stream[msg.id] = (_stream[msg.id] || "") + (msg.chunk || "");
-      const ce = _chat[msg.id] || chatEnsure(msg.id, msg.title);
-      ce.text = _stream[msg.id];
-      chatUpdate(msg.id, msg);
+      if (!silent) {
+        const ce = _chat[msg.id] || chatEnsure(msg.id, msg.title);
+        ce.text = _stream[msg.id];
+        chatUpdate(msg.id, msg);
+      }
       activeTasks = Math.max(activeTasks, 1);
       if (msg.domain) brain.setActiveDomain(msg.domain);
       applyState();
       return;
     }
     if (msg.state === "tool") {
-      chatEnsure(msg.id, msg.title); chatUpdate(msg.id, msg);
+      if (!silent) { chatEnsure(msg.id, msg.title); chatUpdate(msg.id, msg); }
       activeTasks = Math.max(activeTasks, 1);
       brain.setActiveDomain("research");
       applyState();
@@ -146,7 +150,7 @@
       if (msg.domain) brain.setActiveDomain(msg.domain);
     }
     if (msg.state === "done" || msg.state === "error") {
-      if (_chat[msg.id]) {
+      if (!silent && _chat[msg.id]) {
         const e = _chat[msg.id];
         if (msg.state === "error") e.botEl.textContent = "⚠ " + (msg.error || "Fehler");
         else { chatUpdate(msg.id, msg); if (!e.text && msg.preview) e.text = msg.preview; if (e.text) chatCapture(e); }
