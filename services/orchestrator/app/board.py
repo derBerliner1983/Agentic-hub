@@ -58,6 +58,30 @@ def get_project(pid: str) -> dict | None:
     return next((p for p in get_board()["projects"] if p["id"] == pid), None)
 
 
+def ensure_inbox() -> str:
+    """Standard-Projekt 'Eingang' für erfasste Aufgaben-Ergebnisse (legt es an)."""
+    b = get_board()
+    inbox = next((p for p in b["projects"] if p.get("type") == "inbox"), None)
+    if inbox:
+        return inbox["id"]
+    proj = {"id": _new_id(), "title": "Eingang", "goal": "", "detail": "",
+            "type": "inbox", "network": False, "runner": None,
+            "created": _now(), "cards": []}
+    b["projects"].append(proj)
+    _save(b)
+    return proj["id"]
+
+
+def capture(title: str, result: str = "", detail: str = "", status: str = "review") -> dict | None:
+    """Ein Ergebnis (Frage → Antwort) als Karte im Eingang ablegen."""
+    pid = ensure_inbox()
+    card = add_card(pid, title, detail, status)
+    if card and result:
+        update_card(pid, card["id"], {"result": result})
+        card["result"] = result
+    return card
+
+
 def delete_project(pid: str) -> bool:
     b = get_board()
     n = len(b["projects"])

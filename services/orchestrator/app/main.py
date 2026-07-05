@@ -661,6 +661,18 @@ async def api_board_autonomous(data: dict = Body(...)) -> JSONResponse:
     return JSONResponse(board_mod.set_autonomous(bool(data.get("on"))))
 
 
+@app.post("/api/board/capture")
+async def api_board_capture(data: dict = Body(...)) -> JSONResponse:
+    """Ergebnis (Frage + Antwort) als Karte im Eingang-Projekt ablegen."""
+    title = (data.get("title") or "Ergebnis").strip()[:120]
+    card = board_mod.capture(title, data.get("result", ""), data.get("detail", ""))
+    try:
+        await bus.publish({"type": "board", "state": "captured", "title": title})
+    except Exception:  # noqa: BLE001
+        pass
+    return JSONResponse(card or {"error": "fehlgeschlagen"}, status_code=200 if card else 500)
+
+
 @app.post("/api/board/projects")
 async def api_board_add_project(data: dict = Body(...)) -> JSONResponse:
     return JSONResponse(board_mod.add_project(

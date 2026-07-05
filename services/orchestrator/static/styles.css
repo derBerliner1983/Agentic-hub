@@ -177,6 +177,8 @@ body {
 .chat-b { align-self: flex-start; max-width: 96%; background: var(--surface); border: 1px solid var(--border);
   color: var(--fg); font-size: 12px; padding: 8px 11px; border-radius: 12px 12px 12px 3px;
   white-space: pre-wrap; word-break: break-word; }
+.chat-actions { align-self: flex-start; margin-top: -2px; }
+.chat-actions .lnk { font-size: 10.5px; }
 
 /* ── Audio ──────────────────────────────── */
 .audio { margin-top: auto; padding-top: 20px; }

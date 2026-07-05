@@ -92,9 +92,23 @@
     wrap.appendChild(u); wrap.appendChild(b);
     chatlog.appendChild(wrap);
     while (chatlog.childElementCount > 30) chatlog.removeChild(chatlog.firstChild);
-    _chat[id] = { botEl: b, text: "", tools: [] };
+    _chat[id] = { botEl: b, wrapEl: wrap, question: question || "…", text: "", tools: [] };
     chatlog.scrollTop = chatlog.scrollHeight;
     return _chat[id];
+  }
+  function chatCapture(entry) {
+    const bar = document.createElement("div");
+    bar.className = "chat-actions";
+    const btn = document.createElement("button");
+    btn.className = "lnk"; btn.textContent = "→ Board";
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "…";
+      await fetch("/api/board/capture", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: entry.question, result: entry.text }) }).catch(() => {});
+      btn.textContent = "✓ im Board";
+    };
+    bar.appendChild(btn);
+    entry.wrapEl.appendChild(bar);
   }
   function chatUpdate(id, msg) {
     const e = _chat[id]; if (!e) return;
@@ -142,8 +156,9 @@
     }
     if (msg.state === "done" || msg.state === "error") {
       if (_chat[msg.id]) {
-        if (msg.state === "error") _chat[msg.id].botEl.textContent = "⚠ " + (msg.error || "Fehler");
-        else chatUpdate(msg.id, msg);
+        const e = _chat[msg.id];
+        if (msg.state === "error") e.botEl.textContent = "⚠ " + (msg.error || "Fehler");
+        else { chatUpdate(msg.id, msg); if (!e.text && msg.preview) e.text = msg.preview; if (e.text) chatCapture(e); }
         delete _chat[msg.id];
       }
       delete _stream[msg.id];
