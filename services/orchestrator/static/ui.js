@@ -31,6 +31,21 @@
   }
   window.toast = toast;
 
+  // Einmalige Spracherkennung (gleiche Engine wie der Freihand-Modus) → Transkript
+  function recognizeOnce() {
+    return new Promise((resolve, reject) => {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { reject(new Error("Braucht Chrome/Edge (Web-Speech).")); return; }
+      const r = new SR();
+      r.lang = "de-DE"; r.continuous = false; r.interimResults = false; r.maxAlternatives = 1;
+      let done = false;
+      r.onresult = (e) => { done = true; resolve((e.results[0][0].transcript || "").toLowerCase().trim()); };
+      r.onerror = (e) => { if (!done) { done = true; reject(new Error(e.error || "Fehler")); } };
+      r.onend = () => { if (!done) { done = true; reject(new Error("nichts gehört")); } };
+      try { r.start(); } catch (e) { reject(e); }
+    });
+  }
+
   // Sicherheits-Bericht (vom Host geschrieben) als Badges rendern
   const secDot = (ok) => `<span style="color:${ok ? "var(--accent)" : "#ef4444"}">${ok ? "✓" : "✗"}</span>`;
   function secHtml(s) {
@@ -474,8 +489,11 @@
       <div class="hint2">Im Freihand-Modus hört er zu; sagst du dieses Wort, wird alles danach als Befehl ausgeführt (z. B. „Computer, welches Datum ist heute?"). Braucht Chrome/Edge.</div>
       <div class="row" style="align-items:center;margin-top:6px">
         <input id="wake-word" value="${esc(settings.wake_word || "")}" placeholder="z. B. computer · vault · jarvis" style="flex:1"/>
+        <button class="btn" id="wake-rec">🎤 Einsprechen</button>
+        <button class="btn" id="wake-test">🔊 Testen</button>
         <button class="btn" id="wake-save">Weckwort setzen</button>
       </div>
+      <div class="hint2" id="wake-msg"></div>
       <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
       ${secHtml(sec)}
       <div class="hint2" style="margin-top:8px">App-Update: holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
@@ -701,6 +719,30 @@
       const vid = document.getElementById("tts-custom").value.trim();
       if (!vid) return;
       voiceDl(vid, ttsCustomDl);
+    };
+
+    // Weckwort einsprechen (er übernimmt, wie er dich versteht) + testen
+    const wakeMsg = document.getElementById("wake-msg");
+    const wakeRec = document.getElementById("wake-rec");
+    if (wakeRec) wakeRec.onclick = async () => {
+      wakeMsg.textContent = "🎤 höre zu – sag jetzt dein Weckwort …";
+      try {
+        const t = await recognizeOnce();
+        document.getElementById("wake-word").value = t;
+        wakeMsg.textContent = `Verstanden: „${t}". Jetzt „Weckwort setzen" klicken, dann „Testen".`;
+      } catch (e) { wakeMsg.textContent = "Nicht erkannt: " + e.message; }
+    };
+    const wakeTest = document.getElementById("wake-test");
+    if (wakeTest) wakeTest.onclick = async () => {
+      const w = document.getElementById("wake-word").value.trim().toLowerCase();
+      if (!w) { wakeMsg.textContent = "Erst ein Weckwort einsprechen/setzen."; return; }
+      wakeMsg.textContent = "🔊 höre zu – sag dein Weckwort …";
+      try {
+        const t = await recognizeOnce();
+        wakeMsg.textContent = t.includes(w)
+          ? `✓ Erkannt! (gehört: „${t}")`
+          : `✗ Nicht erkannt. Gehört: „${t}". Tipp: „Einsprechen" nutzen und übernehmen.`;
+      } catch (e) { wakeMsg.textContent = "Fehler: " + e.message; }
     };
 
     // Freihand-Weckwort speichern
