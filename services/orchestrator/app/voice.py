@@ -10,11 +10,15 @@ import tempfile
 from pathlib import Path
 
 # --- Konfiguration (Pfade werden im Docker-Image gesetzt) ------------------
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 PIPER_BIN = os.environ.get("PIPER_BIN", "/app/piper/piper/piper")
 PIPER_VOICE = os.environ.get("PIPER_VOICE", "/app/piper/de.onnx")
 
-_stt_model = None  # lazy geladen
+# Auswählbare Whisper-Sprachmodelle (klein=schnell … groß=genauer).
+# Der Server hat Power → auch large-v3 möglich (lädt beim ersten Nutzen nach).
+STT_MODELS = ["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"]
+
+_stt_name = os.environ.get("WHISPER_MODEL", "small")   # aktiv gewähltes Modell
+_stt_model = None  # lazy geladen (Cache für _stt_name)
 
 
 def stt_available() -> bool:
@@ -29,11 +33,24 @@ def tts_available() -> bool:
     return Path(PIPER_BIN).exists() and Path(PIPER_VOICE).exists()
 
 
+def current_stt_model() -> str:
+    return _stt_name
+
+
+def set_stt_model(name: str) -> None:
+    """Sprach-Modell wechseln; Cache leeren, damit es beim nächsten Mal neu lädt."""
+    global _stt_name, _stt_model
+    name = (name or "").strip()
+    if name and name != _stt_name:
+        _stt_name = name
+        _stt_model = None
+
+
 def _get_model():
     global _stt_model
     if _stt_model is None:
         from faster_whisper import WhisperModel
-        _stt_model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+        _stt_model = WhisperModel(_stt_name, device="cpu", compute_type="int8")
     return _stt_model
 
 

@@ -19,6 +19,27 @@ if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 OVERRIDE_DIR=/etc/systemd/system/ollama.service.d
 OVERRIDE=$OVERRIDE_DIR/10-vault.conf
 
+# Aktuelle bzw. neueste Ollama-Version (nur Ziffern, z. B. 0.5.7)
+current_version() { ollama -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
+latest_version() {
+  curl -fsSL --max-time 5 https://api.github.com/repos/ollama/ollama/releases/latest 2>/dev/null \
+    | grep -oE '"tag_name":[[:space:]]*"v?[0-9.]+"' | head -1 \
+    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+}
+
+# Bindung 0.0.0.0 + Dienst sicherstellen (schnell, ohne Neuinstallation)
+ensure_binding() {
+  have systemctl || return 0
+  if [[ ! -f "$OVERRIDE" ]]; then
+    $SUDO mkdir -p "$OVERRIDE_DIR"
+    printf '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n' | $SUDO tee "$OVERRIDE" >/dev/null
+    echo "  ✓ Ollama-Bindung 0.0.0.0:11434 gesetzt"
+    $SUDO systemctl daemon-reload 2>/dev/null || true
+    $SUDO systemctl restart ollama 2>/dev/null || true
+  fi
+  $SUDO systemctl enable --now ollama 2>/dev/null || true
+}
+
 if [[ "$UPDATE_ONLY" -eq 1 ]] && ! have ollama; then
   echo "  • Ollama nicht installiert – überspringe (--update-only)."
   exit 0
@@ -29,8 +50,19 @@ if ! have curl; then
   exit 0
 fi
 
+# Schnellpfad: schon installiert → nur bei wirklich neuer Version neu installieren.
 if have ollama; then
-  echo "  • Aktualisiere Ollama (offizielles Skript, kann etwas dauern)…"
+  CUR="$(current_version)"; LAT="$(latest_version)"
+  if [[ -n "$CUR" && -n "$LAT" && "$CUR" == "$LAT" ]]; then
+    echo "  ✓ Ollama ist aktuell (v$CUR) – kein Update nötig."
+    ensure_binding
+    exit 0
+  fi
+  if [[ -n "$LAT" && -n "$CUR" ]]; then
+    echo "  • Neue Ollama-Version v$LAT (installiert v$CUR) – aktualisiere…"
+  else
+    echo "  • Aktualisiere Ollama (offizielles Skript, kann etwas dauern)…"
+  fi
 else
   echo "  • Installiere Ollama (erkennt AMD/ROCm, lädt ROCm-Pakete – dauert etwas)…"
 fi

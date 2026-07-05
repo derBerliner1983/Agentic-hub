@@ -68,6 +68,11 @@ async def _status_poller() -> None:
 @app.on_event("startup")
 async def _startup() -> None:
     from . import scheduler as scheduler_mod
+    # Sprach-Modell aus den Einstellungen übernehmen (überlebt Neustarts)
+    try:
+        voice.set_stt_model(settings_mod.get().get("stt_model") or "small")
+    except Exception:  # noqa: BLE001
+        pass
     app.state.poller = asyncio.create_task(_status_poller())
     app.state.worker = asyncio.create_task(worker_mod.worker_loop(bus))
     app.state.scheduler = asyncio.create_task(scheduler_mod.scheduler_loop(bus))
@@ -681,6 +686,32 @@ async def _plan_cards(pid: str, goal: str) -> None:
 
 
 # ---- System-Update (UPDATE-Button) ----------------------------------------
+@app.get("/api/system/update/check")
+async def api_update_check(request: Request) -> JSONResponse:
+    """Prüft, ob im Git-Remote neue Commits liegen (für 'Update verfügbar')."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+
+    def _check() -> dict:
+        try:
+            branch = subprocess.check_output(
+                ["git", "-C", REPO_DIR, "rev-parse", "--abbrev-ref", "HEAD"],
+                timeout=10).decode().strip()
+            subprocess.run(["git", "-C", REPO_DIR, "fetch", "--quiet", "origin", branch],
+                           timeout=20, check=False)
+            behind = subprocess.check_output(
+                ["git", "-C", REPO_DIR, "rev-list", "--count", f"HEAD..origin/{branch}"],
+                timeout=10).decode().strip()
+            cur = subprocess.check_output(
+                ["git", "-C", REPO_DIR, "rev-parse", "--short", "HEAD"],
+                timeout=10).decode().strip()
+            return {"behind": int(behind or 0), "branch": branch, "current": cur}
+        except Exception as exc:  # noqa: BLE001
+            return {"error": str(exc)}
+
+    return JSONResponse(await asyncio.to_thread(_check))
+
+
 @app.post("/api/system/update")
 async def api_system_update(request: Request) -> JSONResponse:
     if not _require_admin(request):
@@ -700,7 +731,27 @@ async def api_system_update(request: Request) -> JSONResponse:
 # ---- Voice -----------------------------------------------------------------
 @app.get("/api/voice/status")
 async def api_voice_status() -> JSONResponse:
-    return JSONResponse({"stt": voice.stt_available(), "tts": voice.tts_available()})
+    return JSONResponse({"stt": voice.stt_available(), "tts": voice.tts_available(),
+                         "model": voice.current_stt_model()})
+
+
+@app.get("/api/voice/models")
+async def api_voice_models() -> JSONResponse:
+    return JSONResponse({"current": voice.current_stt_model(), "options": voice.STT_MODELS})
+
+
+@app.post("/api/voice/model")
+async def api_voice_model(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """Sprach-Modell (Whisper) wählen. Lädt beim nächsten Sprachbefehl automatisch."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    name = (data.get("name") or "").strip()
+    if name and name not in voice.STT_MODELS:
+        return JSONResponse({"ok": False, "error": "unbekanntes Modell"}, status_code=400)
+    settings_mod.update({"stt_model": name})
+    voice.set_stt_model(name)
+    audit.log(getattr(request.state, "username", "-"), "stt_model", name)
+    return JSONResponse({"ok": True, "model": voice.current_stt_model()})
 
 
 @app.post("/api/voice/command")

@@ -251,7 +251,7 @@
   }
 
   async function appendModelsAndUsers() {
-    const [me, models, agents, tasks, skills, mcps, settings] = await Promise.all([
+    const [me, models, agents, tasks, skills, mcps, settings, voice] = await Promise.all([
       fetch("/api/me").then((r) => r.json()).catch(() => ({})),
       fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [], running: [] })),
       fetch("/api/agents").then((r) => r.json()).catch(() => []),
@@ -259,7 +259,10 @@
       fetch("/api/skills").then((r) => r.json()).catch(() => []),
       fetch("/api/mcp").then((r) => r.json()).catch(() => []),
       fetch("/api/settings").then((r) => r.json()).catch(() => ({})),
+      fetch("/api/voice/models").then((r) => r.json()).catch(() => ({ current: "", options: [] })),
     ]);
+    const voiceOpts = (voice.options || []).map((m) =>
+      `<option value="${esc(m)}" ${m === voice.current ? "selected" : ""}>${esc(m)}</option>`).join("");
     const gb = (n) => (n / 1e9).toFixed(1) + " GB";
     const reach = models.reachable;
     const running = (models.running || []).map((m) =>
@@ -339,6 +342,19 @@
         <select id="mcp-transport" style="max-width:100px"><option value="stdio">stdio</option><option value="sse">sse</option><option value="http">http</option></select>
         <input id="mcp-target" placeholder="Command oder URL" style="flex:1"/>
         <button class="btn" id="mcp-add">＋ MCP</button>
+      </div>
+      <hr/><h3 class="set-h">Sprache · Spracherkennung (STT-Modell)</h3>
+      <div class="hint2">Welches Whisper-Modell die Sprache erkennt. Größer = genauer, aber langsamer/mehr RAM. Wird beim nächsten Sprachbefehl automatisch geladen (großes Modell = einmaliger Download).</div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <select id="stt-model" style="flex:1">${voiceOpts}</select>
+        <button class="btn" id="stt-save">Sprach-Modell setzen</button>
+      </div>
+      <hr/><h3 class="set-h">System-Update</h3>
+      <div class="hint2">Holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <button class="btn" id="upd-check">Nach Updates suchen</button>
+        <button class="btn primary" id="upd-run">Jetzt aktualisieren</button>
+        <span class="hint2" id="upd-msg"></span>
       </div>
       <hr/><h3 class="set-h">Sicherheit (Zwei-Faktor / MFA)</h3>
       <div class="hint2">Status: <b>${me.mfa ? "aktiv ✓" : "aus"}</b> ·
@@ -464,6 +480,29 @@
       await fetch(`/api/mcp/${b.dataset.mcpdel}`, { method: "DELETE" });
       openSettings();
     }; });
+
+    // Sprach-Modell (STT) wechseln
+    const sttSave = document.getElementById("stt-save");
+    if (sttSave) sttSave.onclick = async () => {
+      const name = document.getElementById("stt-model").value;
+      const j = await fetch("/api/voice/model", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }) }).then((r) => r.json()).catch(() => ({}));
+      sttSave.textContent = j.ok ? "✓ gesetzt" : "Fehler";
+      setTimeout(() => (sttSave.textContent = "Sprach-Modell setzen"), 1500);
+    };
+
+    // System-Update: prüfen + auslösen
+    const updCheck = document.getElementById("upd-check");
+    const updMsg = document.getElementById("upd-msg");
+    if (updCheck) updCheck.onclick = async () => {
+      updMsg.textContent = "prüfe …";
+      const j = await fetch("/api/system/update/check").then((r) => r.json()).catch(() => ({}));
+      if (j.error) updMsg.textContent = "Fehler: " + j.error;
+      else if (j.behind > 0) updMsg.textContent = `${j.behind} Update(s) verfügbar (Stand ${j.current}).`;
+      else updMsg.textContent = `Aktuell (${j.current}) – kein Update nötig.`;
+    };
+    const updRun = document.getElementById("upd-run");
+    if (updRun) updRun.onclick = doUpdate;
 
     // MFA aktivieren/deaktivieren
     const mfaOn = document.getElementById("mfa-on");
