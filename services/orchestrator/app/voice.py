@@ -103,9 +103,9 @@ def _download_voice(voice_id: str, dest) -> bool:
         return False
 
 
-def _resolve_voice_path() -> str:
-    """Pfad zur aktiven Stimme; lädt sie bei Bedarf nach, sonst Standard."""
-    vid = _tts_voice
+def _resolve_voice_path(vid: str | None = None) -> str:
+    """Pfad zur (ggf. bestimmten) Stimme; lädt sie bei Bedarf nach, sonst Standard."""
+    vid = (vid or _tts_voice)
     if vid == _DEFAULT_VOICE and Path(PIPER_VOICE).exists():
         return PIPER_VOICE
     onnx = VOICES_DIR / f"{vid}.onnx"
@@ -132,11 +132,12 @@ def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:
         return "".join(seg.text for seg in segments).strip()
 
 
-def synthesize(text: str) -> bytes | None:
-    """Text → WAV-Bytes via Piper. None, wenn Piper nicht verfügbar."""
+def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
+    """Text → WAV-Bytes via Piper. `voice_id` überschreibt die aktive Stimme
+    (für Vorhören). None, wenn Piper nicht verfügbar."""
     if not tts_available() or not text.strip():
         return None
-    voice_path = _resolve_voice_path()
+    voice_path = _resolve_voice_path(voice_id)
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "out.wav"
         env = dict(os.environ)

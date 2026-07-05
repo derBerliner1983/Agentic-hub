@@ -46,7 +46,8 @@
       fetch("/api/models").then((r) => r.json()).catch(() => ({ available: [] })),
       editId ? fetch(`/api/tasks/${editId}`).then((r) => r.json()).catch(() => null) : null,
     ]);
-    const skillOpts = skills.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
+    const skillOpts = skills.filter((s) => s.enabled !== false)
+      .map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("");
     const modelOpts = '<option value="">Standard</option>' +
       (models.available || []).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("");
     open("Builder", `
@@ -149,6 +150,32 @@
     };
   }
 
+  // ---- Skill-Editor (Modal): neu anlegen oder bestehenden bearbeiten ------
+  async function openSkillEditor(skillId) {
+    const s = skillId ? await fetch(`/api/skills/${skillId}`).then((r) => r.json()).catch(() => null) : null;
+    open(skillId ? "Skill bearbeiten" : "Neuer Skill", `
+      <label>Name <input id="sk-name" value="${esc(s ? s.name : "")}" placeholder="z. B. competitor-scan"/></label>
+      <label>Kurzbeschreibung (wann nutzen?) <input id="sk-desc" value="${esc(s ? s.description : "")}" placeholder="Kurz…"/></label>
+      <label>Anweisung (Schritt-für-Schritt)
+        <textarea id="sk-body" rows="10" placeholder="1. …&#10;2. …">${esc(s ? s.body : "")}</textarea></label>
+      <label class="switch" style="margin-top:12px">
+        <input type="checkbox" id="sk-enabled" ${!s || s.enabled !== false ? "checked" : ""}/>
+        <span>aktiv</span></label>
+      <button class="btn primary" id="sk-save">Speichern</button>`);
+    document.getElementById("sk-save").onclick = async () => {
+      const name = document.getElementById("sk-name").value.trim();
+      if (!name) return alert("Name fehlt");
+      const payload = { name, description: document.getElementById("sk-desc").value,
+        body: document.getElementById("sk-body").value,
+        enabled: document.getElementById("sk-enabled").checked };
+      if (skillId) payload.id = skillId;
+      await fetch("/api/skills", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload) }).catch(() => {});
+      close();
+      if (document.body.dataset.view === "settings") openSettings();
+    };
+  }
+
   // ---- EINSTELLUNGEN (eigene Seite, EINSTELLUNGEN-Tab) --------------------
   const settingsBody = document.getElementById("settings-body");
   async function openSettings() {
@@ -183,7 +210,7 @@
       <button class="btn primary" id="p-save">Speichern</button>
       <div class="hint2">Keys werden lokal in instance/settings.json gespeichert (nicht in Git).</div>
       <hr/>
-      <h4>Datensicherung</h4>
+      <h3 class="set-h">Datensicherung</h3>
       <div class="hint2">Sichert vault/ (Memory), instance/ (Config/Board) und Skills.</div>
       <div class="b-cols" style="margin-top:8px">
         <a class="btn" href="/api/backup" download>⤓ Backup herunterladen</a>
@@ -326,9 +353,14 @@
         <button class="lnk" data-taskedit="${esc(t.id)}">bearbeiten</button>
         <button class="lnk" data-taskdel="${esc(t.id)}">löschen</button></div>`).join("")
       || '<div class="hint2">keine Kurzbefehle</div>';
-    const skillRows = skills.map((s2) => `<div class="mgmt-row">
-        <div><div class="m-title">${esc(s2.name)}</div>
-          <div class="m-sub">${esc(s2.description || s2.id)}</div></div></div>`).join("")
+    const skillRows = skills.map((s2) => `<div class="skill-tile ${s2.enabled === false ? "off" : ""}" data-skill="${esc(s2.id)}">
+        <div class="skill-top">
+          <div class="skill-name">${esc(s2.name)}</div>
+          <label class="mini-switch" title="aktiv/aus"><input type="checkbox" data-skilltoggle="${esc(s2.id)}" ${s2.enabled === false ? "" : "checked"}/><span></span></label>
+        </div>
+        <div class="skill-desc">${esc(s2.description || "—")}</div>
+        <button class="lnk skill-edit" data-skilledit="${esc(s2.id)}">bearbeiten</button>
+      </div>`).join("")
       || '<div class="hint2">keine Skills</div>';
     const mcpRows = mcps.map((m) => `<div class="mgmt-row">
         <div><div class="m-title">${esc(m.name)} ${m.enabled ? "" : "· <i>aus</i>"}
@@ -372,7 +404,7 @@
       <div id="sched-list">${schedRows}</div>
       <hr/><h3 class="set-h">Skills</h3>
       <div class="hint2">Wiederverwendbare Prompt-Bausteine für Tasks.</div>
-      <div id="skill-list">${skillRows}</div>
+      <div id="skill-list" class="skill-grid">${skillRows}</div>
       <button class="btn" id="skill-new" style="margin-top:8px">＋ Neuer Skill</button>
       <hr/><h3 class="set-h">Vault-Wissen (RAG)</h3>
       <div class="hint2">Bezieht relevante Notizen automatisch als Kontext in Antworten ein
@@ -399,11 +431,13 @@
         <select id="stt-model" style="flex:1">${voiceOpts}</select>
         <button class="btn" id="stt-save">Sprach-Modell setzen</button>
       </div>
-      <div class="hint2" style="margin-top:10px">Stimme der Sprachausgabe (Piper). Neue Stimme wird beim ersten Sprechen einmalig geladen.</div>
+      <div class="hint2" style="margin-top:10px">Stimme der Sprachausgabe (Piper). Erst vorhören, dann setzen. Neue Stimme wird beim Vorhören einmalig geladen.</div>
       <div class="row" style="align-items:center;margin-top:6px">
         <select id="tts-voice" style="flex:1">${ttsOpts}</select>
+        <button class="btn" id="tts-preview">▶ Vorhören</button>
         <button class="btn" id="tts-save">Stimme setzen</button>
       </div>
+      <div class="hint2" id="tts-msg"></div>
       <hr/><h3 class="set-h">Sicherheit &amp; System</h3>
       ${secHtml(sec)}
       <div class="hint2" style="margin-top:8px">App-Update: holt die neueste Version aus Git und baut die Container neu (rollend, ohne Datenverlust).</div>
@@ -524,9 +558,18 @@
       setTimeout(() => (b.textContent = "jetzt"), 1500);
     }; });
 
-    // Skills: neu (öffnet Builder mit Skill-Formular)
+    // Skills: als Kacheln – ein/aus schalten, bearbeiten, neu anlegen
+    settingsBody.querySelectorAll("[data-skilltoggle]").forEach((cb) => { cb.onchange = async () => {
+      await fetch(`/api/skills/${cb.dataset.skilltoggle}/enabled`, { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: cb.checked }) }).catch(() => {});
+      const tile = cb.closest(".skill-tile");
+      if (tile) tile.classList.toggle("off", !cb.checked);
+    }; });
+    settingsBody.querySelectorAll("[data-skilledit]").forEach((b) => {
+      b.onclick = () => openSkillEditor(b.dataset.skilledit);
+    });
     const skillNew = document.getElementById("skill-new");
-    if (skillNew) skillNew.onclick = () => openBuilder();
+    if (skillNew) skillNew.onclick = () => openSkillEditor(null);
 
     // RAG: ein/aus + Index neu bauen
     const ragEnabled = document.getElementById("rag-enabled");
@@ -568,7 +611,23 @@
       setTimeout(() => (sttSave.textContent = "Sprach-Modell setzen"), 1500);
     };
 
-    // TTS-Stimme wechseln
+    // TTS-Stimme vorhören (ohne sie zu setzen)
+    const ttsPrev = document.getElementById("tts-preview");
+    let _previewAudio = null;
+    if (ttsPrev) ttsPrev.onclick = () => {
+      const voiceId = document.getElementById("tts-voice").value;
+      const msg = document.getElementById("tts-msg");
+      msg.textContent = "lädt & spielt … (neue Stimme wird einmalig geladen)";
+      ttsPrev.disabled = true;
+      const sample = "Hallo, ich bin deine V.A.U.L.T. Stimme. So klinge ich.";
+      if (_previewAudio) { try { _previewAudio.pause(); } catch (_) {} }
+      _previewAudio = new Audio(`/api/voice/tts?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(sample)}`);
+      _previewAudio.onended = () => { ttsPrev.disabled = false; msg.textContent = "So klingt „" + voiceId + "“."; };
+      _previewAudio.onerror = () => { ttsPrev.disabled = false; msg.textContent = "Vorhören fehlgeschlagen (Piper/Netz?)."; };
+      _previewAudio.play().catch(() => { ttsPrev.disabled = false; msg.textContent = "Wiedergabe blockiert – erneut tippen."; });
+    };
+
+    // TTS-Stimme setzen (nach dem Vorhören bestätigen)
     const ttsSave = document.getElementById("tts-save");
     if (ttsSave) ttsSave.onclick = async () => {
       const voiceId = document.getElementById("tts-voice").value;
@@ -578,18 +637,30 @@
       setTimeout(() => (ttsSave.textContent = "Stimme setzen"), 1500);
     };
 
-    // System-Update: prüfen + auslösen
+    // System-Update: prüfen + auslösen. Update nur anbieten, wenn es eins gibt.
     const updCheck = document.getElementById("upd-check");
     const updMsg = document.getElementById("upd-msg");
-    if (updCheck) updCheck.onclick = async () => {
+    const updRun = document.getElementById("upd-run");
+    const setUpdState = (behind, current) => {
+      if (behind > 0) {
+        updRun.disabled = false;
+        updRun.textContent = `Jetzt aktualisieren (${behind})`;
+        updMsg.textContent = `${behind} Update(s) verfügbar (Stand ${current}).`;
+      } else {
+        updRun.disabled = true;
+        updRun.textContent = "Aktuell";
+        updMsg.textContent = `Aktuell (${current || "?"}) – kein Update nötig.`;
+      }
+    };
+    const runCheck = async () => {
       updMsg.textContent = "prüfe …";
       const j = await fetch("/api/system/update/check").then((r) => r.json()).catch(() => ({}));
-      if (j.error) updMsg.textContent = "Fehler: " + j.error;
-      else if (j.behind > 0) updMsg.textContent = `${j.behind} Update(s) verfügbar (Stand ${j.current}).`;
-      else updMsg.textContent = `Aktuell (${j.current}) – kein Update nötig.`;
+      if (j.error) { updMsg.textContent = "Prüfung fehlgeschlagen: " + j.error; return; }
+      setUpdState(j.behind || 0, j.current);
     };
-    const updRun = document.getElementById("upd-run");
-    if (updRun) updRun.onclick = doUpdate;
+    if (updCheck) updCheck.onclick = runCheck;
+    if (updRun) updRun.onclick = () => { if (!updRun.disabled) doUpdate(); };
+    runCheck();   // beim Öffnen automatisch prüfen
 
     // MFA aktivieren/deaktivieren
     const mfaOn = document.getElementById("mfa-on");

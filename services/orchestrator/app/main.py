@@ -393,10 +393,23 @@ async def api_skills() -> JSONResponse:
     return JSONResponse(skills_mod.list_skills())
 
 
+@app.get("/api/skills/{skill_id}")
+async def api_skill_get(skill_id: str) -> JSONResponse:
+    s = skills_mod.get_skill(skill_id)
+    return JSONResponse(s or {"error": "not found"}, status_code=200 if s else 404)
+
+
 @app.post("/api/skills")
 async def api_skill_create(data: dict = Body(...)) -> JSONResponse:
     return JSONResponse(skills_mod.create_skill(
-        data.get("name", "Skill"), data.get("description", ""), data.get("body", "")))
+        data.get("name", "Skill"), data.get("description", ""), data.get("body", ""),
+        skill_id=data.get("id"), enabled=bool(data.get("enabled", True))))
+
+
+@app.post("/api/skills/{skill_id}/enabled")
+async def api_skill_enabled(skill_id: str, data: dict = Body(...)) -> JSONResponse:
+    ok = skills_mod.set_enabled(skill_id, bool(data.get("on", True)))
+    return JSONResponse({"ok": ok})
 
 
 # ---- Settings (Phase 4) ----------------------------------------------------
@@ -876,9 +889,10 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
 
 
 @app.get("/api/voice/tts")
-async def api_voice_tts(text: str) -> Response:
+async def api_voice_tts(text: str, voice_id: str = "") -> Response:
     try:
-        wav = await asyncio.to_thread(voice.synthesize, text)
+        vid = voice_id or None
+        wav = await asyncio.to_thread(voice.synthesize, text, vid)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     if wav is None:
