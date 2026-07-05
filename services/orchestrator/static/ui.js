@@ -18,6 +18,19 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // Styled Toast statt nativem alert() für Hinweise
+  function toast(msg, kind) {
+    let host = document.getElementById("toast-host");
+    if (!host) { host = document.createElement("div"); host.id = "toast-host"; document.body.appendChild(host); }
+    const el = document.createElement("div");
+    el.className = "toast" + (kind ? " " + kind : "");
+    el.textContent = msg;
+    host.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("in"));
+    setTimeout(() => { el.classList.remove("in"); setTimeout(() => el.remove(), 250); }, 2600);
+  }
+  window.toast = toast;
+
   // Sicherheits-Bericht (vom Host geschrieben) als Badges rendern
   const secDot = (ok) => `<span style="color:${ok ? "var(--accent)" : "#ef4444"}">${ok ? "✓" : "✗"}</span>`;
   function secHtml(s) {
@@ -120,7 +133,7 @@
     };
     document.getElementById("t-save").onclick = async () => {
       const title = document.getElementById("t-title").value.trim();
-      if (!title) return alert("Titel fehlt");
+      if (!title) return toast("Titel fehlt", "warn");
       const st = document.getElementById("t-sched").value;
       const sv = document.getElementById("t-schedval").value.trim();
       let schedule = null, cadence = "on-demand";
@@ -138,7 +151,7 @@
     };
     document.getElementById("s-save").onclick = async () => {
       const name = document.getElementById("s-name").value.trim();
-      if (!name) return alert("Name fehlt");
+      if (!name) return toast("Name fehlt", "warn");
       await fetch("/api/skills", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -164,7 +177,7 @@
       <button class="btn primary" id="sk-save">Speichern</button>`);
     document.getElementById("sk-save").onclick = async () => {
       const name = document.getElementById("sk-name").value.trim();
-      if (!name) return alert("Name fehlt");
+      if (!name) return toast("Name fehlt", "warn");
       const payload = { name, description: document.getElementById("sk-desc").value,
         body: document.getElementById("sk-body").value,
         enabled: document.getElementById("sk-enabled").checked };
@@ -380,9 +393,13 @@
       </div>
       <hr/><h4>Modell laden</h4>
       <label>ab 3 Buchstaben sucht er lokal + auf HuggingFace</label>
-      <div class="row"><input id="pull-name" list="pullmodels" autocomplete="off" placeholder="z. B. gemma · llama3.1:8b · hf.co/…-GGUF" style="flex:1"/>
-        <button class="btn" id="pull-go">⤓ Laden</button></div>
-      <datalist id="pullmodels">${pullOpts}</datalist>
+      <div class="row">
+        <div class="ac-wrap" style="flex:1">
+          <input id="pull-name" autocomplete="off" placeholder="z. B. gemma · llama3.1:8b · hf.co/…-GGUF" style="width:100%"/>
+          <div class="ac-menu" id="pull-menu" hidden></div>
+        </div>
+        <button class="btn" id="pull-go">⤓ Laden</button>
+      </div>
       <div class="chips">${SUGGEST.map((m) => `<button class="chip" data-model="${m}">${m}</button>`).join("")}</div>
       <div class="progress" id="pull-progress" hidden><i></i></div>
       <div class="hint2" id="pull-msg">${noModels ? "Noch kein Modell geladen." : ""}</div>
@@ -499,24 +516,39 @@
     };
     window.addEventListener("vault-log", window._vaultModelLog);
 
-    // Live-Suche auf HuggingFace, sobald ≥3 Zeichen getippt werden
+    // Eigenes Autocomplete-Dropdown (styled, statt hässlichem Browser-Datalist)
     const pullName = document.getElementById("pull-name");
-    const dl = document.getElementById("pullmodels");
-    const baseOpts = () => uniq([...SUGGEST, ...names]).map((m) => `<option value="${esc(m)}">`).join("");
-    if (pullName && dl) {
+    const acMenu = document.getElementById("pull-menu");
+    const localItems = (q) => uniq([...SUGGEST, ...names])
+      .filter((m) => m.toLowerCase().includes(q.toLowerCase()))
+      .slice(0, 8).map((m) => ({ val: m, name: m, sub: names.includes(m) ? "installiert" : "Ollama" }));
+    const renderMenu = (items) => {
+      if (!items.length) { acMenu.hidden = true; acMenu.innerHTML = ""; return; }
+      acMenu.innerHTML = items.map((it) =>
+        `<div class="ac-item" data-val="${esc(it.val)}"><div class="ac-name">${esc(it.name)}</div>${it.sub ? `<div class="ac-sub">${esc(it.sub)}</div>` : ""}</div>`).join("");
+      acMenu.hidden = false;
+      acMenu.querySelectorAll(".ac-item").forEach((el) => { el.onmousedown = (e) => {
+        e.preventDefault(); pullName.value = el.dataset.val; acMenu.hidden = true;
+      }; });
+    };
+    if (pullName && acMenu) {
       let searchTimer = null;
       pullName.addEventListener("input", () => {
         const q = pullName.value.trim();
-        if (q.length < 3 || q.startsWith("hf.co/")) { dl.innerHTML = baseOpts(); return; }
+        if (q.length < 3 || q.startsWith("hf.co/")) { renderMenu(localItems(q)); return; }
         clearTimeout(searchTimer);
+        renderMenu([{ val: q, name: "suche …", sub: "" }]);
         searchTimer = setTimeout(async () => {
           const j = await fetch("/api/models/search?q=" + encodeURIComponent(q))
             .then((r) => r.json()).catch(() => ({ results: [] }));
-          const hits = (j.results || []).map((r) =>
-            `<option value="${esc(r.pull)}">${esc(r.id)}${r.downloads != null ? " · " + r.downloads.toLocaleString("de-DE") + " Downloads" : " · Ollama"}</option>`).join("");
-          dl.innerHTML = baseOpts() + hits;
+          const items = (j.results || []).slice(0, 20).map((r) => ({
+            val: r.pull, name: r.id || r.pull,
+            sub: r.downloads != null ? r.downloads.toLocaleString("de-DE") + " Downloads" : "Ollama" }));
+          renderMenu(items.length ? items : localItems(q));
         }, 300);
       });
+      pullName.addEventListener("focus", () => { if (pullName.value.trim().length < 3) renderMenu(localItems("")); });
+      pullName.addEventListener("blur", () => setTimeout(() => { acMenu.hidden = true; }, 150));
     }
 
     const pullGo = document.getElementById("pull-go");
@@ -595,7 +627,7 @@
     const mcpAdd = document.getElementById("mcp-add");
     if (mcpAdd) mcpAdd.onclick = async () => {
       const name = document.getElementById("mcp-name").value.trim();
-      if (!name) return alert("Name fehlt");
+      if (!name) return toast("Name fehlt", "warn");
       await fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, transport: document.getElementById("mcp-transport").value,
           target: document.getElementById("mcp-target").value.trim() }) });
@@ -682,7 +714,7 @@
     const mfaOn = document.getElementById("mfa-on");
     if (mfaOn) mfaOn.onclick = async () => {
       const j = await fetch("/api/mfa/enable", { method: "POST" }).then((r) => r.json()).catch(() => ({}));
-      if (!j.qr_svg && !j.secret) return alert("MFA-Setup nicht möglich.");
+      if (!j.qr_svg && !j.secret) return toast("MFA-Setup nicht möglich.", "warn");
       document.getElementById("mfa-area").innerHTML =
         `<div class="qrbox">${j.qr_svg || ""}</div>
          <div class="hint2">Secret: <code>${esc(j.secret)}</code></div>
@@ -694,7 +726,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: document.getElementById("mfa-code").value }) })
           .then((r) => r.json()).catch(() => ({}));
-        if (v.ok) openSettings(); else alert("Code falsch.");
+        if (v.ok) openSettings(); else toast("Code falsch.", "warn");
       };
     };
     const mfaOff = document.getElementById("mfa-off");
@@ -719,7 +751,7 @@
             body: JSON.stringify({ ...a, model: inp.value }) });
         }
       }
-      alert("Agenten-Modelle gespeichert.");
+      toast("Agenten-Modelle gespeichert.", "ok");
     };
 
     if (me.role === "admin") {
@@ -764,7 +796,7 @@
   async function doUpdate() {
     if (!confirm("V.A.U.L.T. aus Git aktualisieren und Container neu bauen?")) return;
     const r = await fetch("/api/system/update", { method: "POST" }).then((x) => x.json()).catch(() => ({}));
-    alert(r.ok ? "Update gestartet – der Server startet gleich neu." : ("Update nicht möglich: " + (r.error || "?")));
+    toast(r.ok ? "Update gestartet – Server startet gleich neu." : ("Update nicht möglich: " + (r.error || "?")), r.ok ? "ok" : "warn");
   }
 
   // ---- Eingabe: Einzelaufgabe ODER Projekt --------------------------------

@@ -81,7 +81,8 @@ class OllamaProvider(Provider):
                         except Exception:  # noqa: BLE001
                             continue
                         total, done = d.get("total"), d.get("completed")
-                        pct = int(done / total * 100) if total else None
+                        # Ollama liefert 'total' oft schon, 'completed' erst später → None absichern
+                        pct = int(done / total * 100) if (total and done is not None) else None
                         if pct is not None and pct >= last_pct + 5:
                             last_pct = pct
                             await bus.publish({"type": "model", "state": "pulling", "model": model,
