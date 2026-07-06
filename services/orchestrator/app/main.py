@@ -962,6 +962,8 @@ async def api_voice_model(request: Request, data: dict = Body(...)) -> JSONRespo
 
 @app.post("/api/voice/command")
 async def api_voice_command(file: UploadFile) -> JSONResponse:
+    import time as _t
+    _t0 = _t.monotonic()
     audio = await file.read()
     suffix = os.path.splitext(file.filename or "")[1] or ".webm"
     s = settings_mod.get()
@@ -985,9 +987,13 @@ async def api_voice_command(file: UploadFile) -> JSONResponse:
         return JSONResponse({"ok": True, "text": text, "task": task_id})
     # … alles andere wird beantwortet und die Antwort zurückgegeben (nur sprechen)
     if text and len(text.strip()) >= 2:
+        _t1 = _t.monotonic()
         answer = await run_adhoc(text.strip(), provider(), bus, channel="voice")
+        # Latenz-Aufschlüsselung (STT vs. Antwort) – hilft beim Tuning
         return JSONResponse({"ok": True, "text": text, "task": None,
-                             "answered": True, "answer": answer or ""})
+                             "answered": True, "answer": answer or "",
+                             "t_stt_ms": int((_t1 - _t0) * 1000),
+                             "t_answer_ms": int((_t.monotonic() - _t1) * 1000)})
     return JSONResponse({"ok": True, "text": text, "task": None})
 
 
@@ -1007,8 +1013,19 @@ async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONRespon
 
 @app.get("/api/voice/tts")
 async def api_voice_tts(text: str, voice_id: str = "") -> Response:
-    # ElevenLabs-Engine (wenn aktiv + Key + Stimme; voice_id-Param = Piper-Vorhören)
     s = settings_mod.get()
+    # Lokale XTTS-Engine (setup-xtts.sh am Host) – sehr natürlich, komplett offline
+    if not voice_id and s.get("tts_engine") == "xtts":
+        try:
+            import httpx as _hx
+            async with _hx.AsyncClient(timeout=60.0) as c:
+                r = await c.get(f"{(s.get('xtts_url') or '').rstrip('/')}/tts",
+                                params={"text": text, "language": "de"})
+                r.raise_for_status()
+                return Response(content=r.content, media_type="audio/wav")
+        except Exception:  # noqa: BLE001 – XTTS-Dienst down → Piper übernimmt
+            pass
+    # ElevenLabs-Engine (wenn aktiv + Key + Stimme; voice_id-Param = Piper-Vorhören)
     if (not voice_id and s.get("tts_engine") == "elevenlabs"
             and s.get("elevenlabs_key") and s.get("elevenlabs_voice")):
         try:

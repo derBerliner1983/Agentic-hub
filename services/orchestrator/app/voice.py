@@ -205,7 +205,11 @@ def transcribe(audio_bytes: bytes, suffix: str = ".webm") -> str:
             check=True, capture_output=True,
         )
         model = _get_model()
-        segments, _info = model.transcribe(str(wav), language="de", vad_filter=True)
+        # beam_size=1 + kein Vorkontext: ~3-5x schneller bei praktisch gleicher
+        # Qualität für kurze Sprachbefehle (Standard-beam 5 ist der Latenzfresser).
+        segments, _info = model.transcribe(str(wav), language="de", vad_filter=True,
+                                           beam_size=1, best_of=1,
+                                           condition_on_previous_text=False)
         return "".join(seg.text for seg in segments).strip()
 
 

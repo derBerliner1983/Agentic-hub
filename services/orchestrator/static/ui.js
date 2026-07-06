@@ -546,19 +546,28 @@
         <input id="tts-custom" placeholder="z. B. de_DE-thorsten_emotional-medium" style="flex:1"/>
         <button class="btn" id="tts-custom-dl">⤓ Laden</button>
       </div>
-      <div class="v-head" style="margin-top:14px">ENGINE · REALISTISCH &amp; SCHNELL (ELEVENLABS)</div>
-      <div class="hint2">Optional statt Piper/Whisper: <b>ElevenLabs</b> (Cloud, API-Key nötig, kostet Guthaben) –
-        sehr natürliche Stimme + sehr schnelle Erkennung (flash v2.5 / Scribe). Fällt bei Störung automatisch auf lokal zurück.</div>
+      <div class="v-head" style="margin-top:14px">ENGINE · REALISTISCH &amp; SCHNELL</div>
+      <div class="hint2"><b>XTTS (lokal)</b>: ElevenLabs-Qualität komplett offline, eigene Stimme klonbar –
+        einmal am Server einrichten: <code>sudo scripts/setup-xtts.sh --rocm</code>.
+        <b>ElevenLabs</b>: Cloud, API-Key, kostet Guthaben. Fällt bei Störung automatisch auf Piper zurück.</div>
       <div class="row" style="margin-top:6px">
         <span class="hint2">Sprechen</span>
-        <select id="el-tts" style="max-width:170px">
-          <option value="piper" ${settings.tts_engine !== "elevenlabs" ? "selected" : ""}>Piper (lokal)</option>
-          <option value="elevenlabs" ${settings.tts_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs</option>
+        <select id="el-tts" style="max-width:190px">
+          <option value="piper" ${!["elevenlabs", "xtts"].includes(settings.tts_engine) ? "selected" : ""}>Piper (lokal, schnell)</option>
+          <option value="xtts" ${settings.tts_engine === "xtts" ? "selected" : ""}>XTTS (lokal, natürlich)</option>
+          <option value="elevenlabs" ${settings.tts_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs (Cloud)</option>
         </select>
         <span class="hint2">Verstehen</span>
-        <select id="el-stt" style="max-width:170px">
+        <select id="el-stt" style="max-width:190px">
           <option value="whisper" ${settings.stt_engine !== "elevenlabs" ? "selected" : ""}>Whisper (lokal)</option>
-          <option value="elevenlabs" ${settings.stt_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs</option>
+          <option value="elevenlabs" ${settings.stt_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs (Cloud)</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px;align-items:center">
+        <span class="hint2">Schnelles Antwort-Modell nur für Sprache</span>
+        <select id="voice-model" style="flex:1">
+          <option value="">— aktives Modell —</option>
+          ${names.map((n) => `<option value="${esc(n)}" ${n === (settings.voice_model || "") ? "selected" : ""}>${esc(mlabel(n))}</option>`).join("")}
         </select>
       </div>
       <label>ElevenLabs API-Key ${settings.elevenlabs_key_set ? "✓ gesetzt" : ""}
@@ -839,7 +848,8 @@
     if (elSave) elSave.onclick = async () => {
       const patch = { tts_engine: document.getElementById("el-tts").value,
         stt_engine: document.getElementById("el-stt").value,
-        elevenlabs_voice: document.getElementById("el-voice").value };
+        elevenlabs_voice: document.getElementById("el-voice").value,
+        voice_model: document.getElementById("voice-model").value };
       const k = document.getElementById("el-key").value.trim();
       if (k) patch.elevenlabs_key = k;
       await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },

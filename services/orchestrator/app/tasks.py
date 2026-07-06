@@ -133,9 +133,13 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
     date_ctx = (f"Heute ist {_now.strftime('%A, %d.%m.%Y')}, aktuelle Uhrzeit "
                 f"{_now.strftime('%H:%M')}. Datum und Uhrzeit kennst du damit bereits – "
                 f"dafür KEINE Web-Suche nutzen. ")
+    voice_model = None
     if channel == "voice":
         # Gesprochene Antworten: kurz halten → schnellere Generierung + schnelleres TTS
         date_ctx += "Antworte in maximal zwei kurzen Sätzen (wird vorgelesen). "
+        # Optional ein kleines, schnelles Modell nur für Sprache (settings.voice_model)
+        from . import settings as _s
+        voice_model = (_s.get().get("voice_model") or "").strip() or None
     used_tools = hasattr(provider, "chat_with_tools")
     if used_tools:
         # Werkzeug-fähig: das Modell darf Web-Suche/Vault/MCP nutzen
@@ -145,7 +149,7 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
             await emit("tool", tool=ev.get("tool", ""))
         try:
             result = await provider.chat_with_tools(
-                prompt, tools_mod.toolset(), tools_mod.execute,
+                prompt, tools_mod.toolset(), tools_mod.execute, model=voice_model,
                 system=date_ctx + "Du bist ein hilfreicher Assistent mit Werkzeugen "
                        "(Web-Suche, Web-Abruf, Vault-Suche). Nutze sie bei aktuellen "
                        "Fakten/Zahlen. Antworte kurz und direkt auf Deutsch." + rag_ctx,
@@ -156,7 +160,8 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
             result = ""
     if not used_tools:
         try:
-            async for chunk in provider.generate_stream(prompt, system=(date_ctx + rag_ctx)):
+            async for chunk in provider.generate_stream(prompt, model=voice_model,
+                                                        system=(date_ctx + rag_ctx)):
                 result += chunk
                 await emit("stream", chunk=chunk, step=1, steps=1)
         except Exception as exc:  # noqa: BLE001

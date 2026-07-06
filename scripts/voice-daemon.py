@@ -162,6 +162,8 @@ def main():
             return
         text = j.get("text", "")
         answer = j.get("answer") or ("Erledigt." if j.get("task") else "")
+        if j.get("t_stt_ms") is not None:
+            log(f"Latenz: STT {j['t_stt_ms']} ms · Antwort {j.get('t_answer_ms', '?')} ms")
         log(f"Verstanden: '{text}'  ->  {answer[:100]!r}")
         if answer:
             try:
