@@ -106,6 +106,7 @@
   async function onStop() {
     if (window._vaultResumeHF) setTimeout(window._vaultResumeHF, 400);   // Freihand wieder an
     if (mediaRecorder._cancel) { setState("TTS.STANDBY"); return; }
+    playAck();   // sofort bestätigen – die echte Antwort folgt, sobald sie fertig ist
     setState("STT.THINKING");
     const blob = new Blob(chunks, { type: "audio/webm" });
     const fd = new FormData();
@@ -126,14 +127,38 @@
     }
   }
 
+  // Audio-Warteschlange: Bestätigung + Antwort spielen nacheinander (kein Überlappen)
+  let _curAudio = null;
+  const _audioQ = [];
+  function _playNext() {
+    if (_curAudio || !_audioQ.length) { if (!_curAudio) setState("TTS.STANDBY"); return; }
+    setState("TTS.LIVE");
+    _curAudio = new Audio(_audioQ.shift());
+    const done = () => { _curAudio = null; _playNext(); };
+    _curAudio.onended = done;
+    _curAudio.onerror = done;
+    _curAudio.play().catch(done);
+  }
+  function enqueueAudio(src) { _audioQ.push(src); _playNext(); }
   function speak(text) {
-    try {
-      setState("TTS.LIVE");
-      const audio = new Audio(`/api/voice/tts?text=${encodeURIComponent(text)}`);
-      audio.onended = () => setState("TTS.STANDBY");
-      audio.onerror = () => setState("TTS.STANDBY");
-      audio.play().catch(() => setState("TTS.STANDBY"));
-    } catch (_) { setState("TTS.STANDBY"); }
+    if (!text) return;
+    enqueueAudio(`/api/voice/tts?text=${encodeURIComponent(text)}`);
+  }
+
+  // Sofort-Bestätigung ("Verstanden, einen Moment.") – vorab geladen, spielt SOFORT,
+  // während das LLM noch an der echten Antwort arbeitet.
+  let ackText = "", ackUrl = null;
+  fetch("/api/settings").then((r) => r.json()).then((s) => {
+    ackText = (s.ack_phrase || "").trim();
+    if (!ackText) return;
+    fetch(`/api/voice/tts?text=${encodeURIComponent(ackText)}`)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => { if (b && b.size > 200) ackUrl = URL.createObjectURL(b); })
+      .catch(() => {});
+  }).catch(() => {});
+  function playAck() {
+    if (!ackText) return;
+    enqueueAudio(ackUrl || `/api/voice/tts?text=${encodeURIComponent(ackText)}`);
   }
 
   // Tasten: Space halten = sprechen, ESC = abbrechen
@@ -175,6 +200,7 @@
   }
 
   function sendText(text) {
+    playAck();   // sofort bestätigen, LLM denkt parallel
     setState("STT.THINKING");
     textEl.textContent = "„" + text + "”";
     fetch("/api/voice/text", { method: "POST", headers: { "Content-Type": "application/json" },

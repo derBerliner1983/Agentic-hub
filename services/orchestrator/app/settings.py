@@ -26,6 +26,8 @@ _DEFAULTS = {
     "elevenlabs_model": "eleven_flash_v2_5",
     "xtts_url": "http://host.docker.internal:5002",   # lokaler XTTS-Dienst (setup-xtts.sh)
     "voice_model": "",   # schnelles Modell NUR für Sprachantworten (leer = aktives)
+    # Sofort-Bestätigung: wird SOFORT gesprochen, während das LLM noch denkt
+    "ack_phrase": "Verstanden, einen Moment.",   # leer = aus
     "rag_enabled": False,   # RAG: Vault-Wissen als Kontext in Antworten einbeziehen
     "wake_word": "",   # Freihand-Weckwort (Browser, leer = aus); danach folgt der Befehl
     "owakeword_model": "hey_jarvis",   # Server-Weckwort (openWakeWord-Modell)
@@ -75,6 +77,7 @@ def public() -> dict:
         "elevenlabs_key_set": bool(d["elevenlabs_key"]),
         "xtts_url": d["xtts_url"],
         "voice_model": d["voice_model"],
+        "ack_phrase": d["ack_phrase"],
         "rag_enabled": d["rag_enabled"],
         "wake_word": d["wake_word"],
         "owakeword_model": d["owakeword_model"],

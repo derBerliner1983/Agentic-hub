@@ -570,6 +570,17 @@
           ${names.map((n) => `<option value="${esc(n)}" ${n === (settings.voice_model || "") ? "selected" : ""}>${esc(mlabel(n))}</option>`).join("")}
         </select>
       </div>
+      <label style="margin-top:10px">Sofort-Bestätigung (wird SOFORT gesprochen, während er denkt · leer = aus)</label>
+      <div class="row"><input id="ack-phrase" value="${esc(settings.ack_phrase || "")}" placeholder="z. B. Verstanden, einen Moment." style="flex:1"/></div>
+      <div class="v-head" style="margin-top:14px">EIGENE STIMME (XTTS-KLON)</div>
+      <div class="hint2" id="clone-status">prüfe …</div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn" id="clone-rec">🎤 Stimme aufnehmen</button>
+        <button class="btn" id="clone-play" hidden>▶ Anhören</button>
+        <button class="btn" id="clone-del" hidden>löschen</button>
+      </div>
+      <div class="hint2">10-30 s ruhig und deutlich sprechen (z. B. ein paar Sätze vorlesen).
+        XTTS spricht danach mit <b>deiner Stimme</b> – oben Engine „XTTS (lokal)" wählen.</div>
       <label>ElevenLabs API-Key ${settings.elevenlabs_key_set ? "✓ gesetzt" : ""}
         <input id="el-key" type="password" placeholder="${settings.elevenlabs_key_set ? "•••• (leer = behalten)" : "xi-…"}"/></label>
       <div class="row" style="margin-top:6px">
@@ -849,7 +860,8 @@
       const patch = { tts_engine: document.getElementById("el-tts").value,
         stt_engine: document.getElementById("el-stt").value,
         elevenlabs_voice: document.getElementById("el-voice").value,
-        voice_model: document.getElementById("voice-model").value };
+        voice_model: document.getElementById("voice-model").value,
+        ack_phrase: document.getElementById("ack-phrase").value };
       const k = document.getElementById("el-key").value.trim();
       if (k) patch.elevenlabs_key = k;
       await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -880,6 +892,62 @@
           ? `✓ Erkannt! (gehört: „${t}")`
           : `✗ Nicht erkannt. Gehört: „${t}". Tipp: „Einsprechen" nutzen und übernehmen.`;
       } catch (e) { wakeMsg.textContent = "Fehler: " + e.message; }
+    };
+
+    // Eigene Stimme (XTTS-Klon) über die Webseite einsprechen
+    const cloneStatus = document.getElementById("clone-status");
+    const clonePlay = document.getElementById("clone-play");
+    const cloneDel = document.getElementById("clone-del");
+    const cloneRec = document.getElementById("clone-rec");
+    const refreshClone = async () => {
+      const j = await fetch("/api/voice/clone").then((r) => r.json()).catch(() => ({}));
+      if (j.exists) {
+        cloneStatus.innerHTML = `<span style="color:var(--accent)">✓ eigene Stimme gespeichert</span>` +
+          (j.seconds ? ` · ${j.seconds} s` : "") + ` · ${((j.size || 0) / 1e6).toFixed(1)} MB`;
+        clonePlay.hidden = false; cloneDel.hidden = false;
+      } else {
+        cloneStatus.textContent = "Noch keine eigene Stimme – aufnehmen und XTTS klont sie.";
+        clonePlay.hidden = true; cloneDel.hidden = true;
+      }
+    };
+    refreshClone();
+    if (clonePlay) clonePlay.onclick = () => new Audio("/api/voice/clone/audio?ts=" + Date.now()).play().catch(() => {});
+    if (cloneDel) cloneDel.onclick = async () => {
+      if (!confirm("Eigene Stimme löschen? XTTS nutzt dann wieder die Standardstimme.")) return;
+      await fetch("/api/voice/clone", { method: "DELETE" }).catch(() => {});
+      refreshClone();
+    };
+    let cloneRecorder = null, cloneChunks = [], cloneTimer = null;
+    if (cloneRec) cloneRec.onclick = async () => {
+      if (cloneRecorder && cloneRecorder.state === "recording") { cloneRecorder.stop(); return; }
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (_) { toast("Mikrofon-Zugriff verweigert (HTTPS nötig).", "warn"); return; }
+      cloneChunks = [];
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      cloneRecorder = new MediaRecorder(stream, { mimeType: mime });
+      cloneRecorder.ondataavailable = (e) => { if (e.data.size) cloneChunks.push(e.data); };
+      cloneRecorder.onstop = async () => {
+        clearTimeout(cloneTimer);
+        stream.getTracks().forEach((t) => t.stop());
+        cloneRec.textContent = "⤴ speichere …"; cloneRec.disabled = true;
+        const fd = new FormData();
+        fd.append("file", new Blob(cloneChunks, { type: "audio/webm" }), "stimme.webm");
+        const j = await fetch("/api/voice/clone", { method: "POST", body: fd })
+          .then((r) => r.json()).catch(() => ({}));
+        cloneRec.disabled = false; cloneRec.textContent = "🎤 Stimme aufnehmen";
+        if (j.ok) toast(`Stimme gespeichert (${j.seconds || "?"} s) – XTTS nutzt sie ab sofort.`, "ok");
+        else toast("Fehler: " + (j.error || "?"), "warn");
+        refreshClone();
+      };
+      cloneRecorder.start();
+      cloneRec.textContent = "⏹ Stopp (nimmt auf … max 30 s)";
+      let left = 30;
+      cloneTimer = setInterval(() => {
+        left--;
+        cloneRec.textContent = `⏹ Stopp (nimmt auf … noch ${left} s)`;
+        if (left <= 0 && cloneRecorder.state === "recording") cloneRecorder.stop();
+      }, 1000);
     };
 
     // Freihand-Weckwort speichern

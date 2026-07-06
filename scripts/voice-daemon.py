@@ -134,6 +134,26 @@ def main():
         kw["headers"]["x-vault-token"] = token
         return getattr(requests, method)(f"{ORCH_URL}{path}", **kw)
 
+    # Sofort-Bestätigung vorab als Audio holen → spielt ohne Verzögerung,
+    # während das LLM noch an der echten Antwort arbeitet.
+    import threading
+    ack_audio = {"data": None, "mime": ""}
+
+    def fetch_ack():
+        phrase = (load_settings().get("ack_phrase") or "").strip()
+        if not phrase:
+            ack_audio["data"] = None
+            return
+        try:
+            r = http("get", "/api/voice/tts", params={"text": phrase}, timeout=60)
+            if r.status_code == 200 and r.content:
+                ack_audio["data"] = r.content
+                ack_audio["mime"] = r.headers.get("content-type", "")
+                log("Sofort-Bestätigung geladen.")
+        except Exception:  # noqa: BLE001
+            ack_audio["data"] = None
+    fetch_ack()
+
     def record_command(stream, np):
         frames, silent, start = [], 0.0, time.time()
         while time.time() - start < MAX_RECORD:
@@ -153,6 +173,12 @@ def main():
         audio = record_command(stream, np)
         if audio.size < RATE // 2:
             return
+        # Bestätigung SOFORT sprechen (parallel), Befehl läuft derweil zum LLM
+        ack_th = None
+        if ack_audio["data"]:
+            ack_th = threading.Thread(target=play_audio,
+                                      args=(ack_audio["data"], ack_audio["mime"]), daemon=True)
+            ack_th.start()
         try:
             r = http("post", "/api/voice/command",
                      files={"file": ("cmd.wav", to_wav_bytes(audio), "audio/wav")})
@@ -168,6 +194,8 @@ def main():
         if answer:
             try:
                 tts = http("get", "/api/voice/tts", params={"text": answer}, timeout=60)
+                if ack_th:
+                    ack_th.join(timeout=15)   # Bestätigung ausreden lassen
                 if tts.status_code == 200 and tts.content:
                     play_audio(tts.content, tts.headers.get("content-type", ""))
             except Exception as exc:  # noqa: BLE001
@@ -190,6 +218,7 @@ def main():
                     s2 = load_settings()
                     nw = s2.get("owakeword_model", wake)
                     threshold = float(s2.get("owakeword_threshold", threshold) or threshold)
+                    fetch_ack()   # Bestätigungssatz evtl. geändert
                     if nw != wake:
                         wake = nw
                         oww = Model(wakeword_models=[wake])

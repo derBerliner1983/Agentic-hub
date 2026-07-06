@@ -244,6 +244,46 @@ def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
         return None
 
 
+# --- Eigene Stimme für XTTS (über die Webseite eingesprochen) ---------------
+# Liegt in instance/ (= Host repo/instance) → der XTTS-Dienst am Host nutzt sie
+# automatisch als Referenzstimme (Klonen), ohne Neustart.
+CLONE_WAV = Path(os.environ.get("STORE_DIR", "/instance")) / "xtts_speaker.wav"
+
+
+def save_clone(audio_bytes: bytes, suffix: str = ".webm") -> dict:
+    """Browser-Aufnahme → 22.05-kHz-Mono-WAV als XTTS-Referenzstimme speichern."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in{suffix}"
+        out = Path(tmp) / "out.wav"
+        src.write_bytes(audio_bytes)
+        subprocess.run(["ffmpeg", "-y", "-i", str(src), "-ar", "22050", "-ac", "1", str(out)],
+                       check=True, capture_output=True)
+        data = out.read_bytes()
+    CLONE_WAV.parent.mkdir(parents=True, exist_ok=True)
+    CLONE_WAV.write_bytes(data)
+    return clone_info()
+
+
+def clone_info() -> dict:
+    if not CLONE_WAV.exists():
+        return {"exists": False}
+    secs = None
+    try:
+        import wave as _wave
+        with _wave.open(str(CLONE_WAV), "rb") as w:
+            secs = round(w.getnframes() / (w.getframerate() or 1), 1)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"exists": True, "size": CLONE_WAV.stat().st_size, "seconds": secs}
+
+
+def delete_clone() -> bool:
+    if CLONE_WAV.exists():
+        CLONE_WAV.unlink()
+        return True
+    return False
+
+
 # --- ElevenLabs (Cloud-Engine, optional): sehr natürlich + niedrige Latenz --
 _EL_BASE = "https://api.elevenlabs.io/v1"
 

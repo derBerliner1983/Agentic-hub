@@ -931,6 +931,47 @@ async def api_tts_delete(request: Request, data: dict = Body(...)) -> JSONRespon
     return JSONResponse({"ok": ok})
 
 
+# ---- Eigene Stimme (XTTS-Klon) über die Webseite einsprechen ---------------
+@app.get("/api/voice/clone")
+async def api_clone_info() -> JSONResponse:
+    return JSONResponse(voice.clone_info())
+
+
+@app.post("/api/voice/clone")
+async def api_clone_save(request: Request, file: UploadFile) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    audio = await file.read()
+    if len(audio) < 20000:
+        return JSONResponse({"ok": False, "error": "Aufnahme zu kurz – bitte 10-30 s sprechen."},
+                            status_code=400)
+    suffix = os.path.splitext(file.filename or "")[1] or ".webm"
+    try:
+        info = await asyncio.to_thread(voice.save_clone, audio, suffix)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"Konvertierung fehlgeschlagen: {exc}"},
+                            status_code=500)
+    audit.log(getattr(request.state, "username", "-"), "voice_clone", "gespeichert")
+    return JSONResponse({"ok": True, **info})
+
+
+@app.delete("/api/voice/clone")
+async def api_clone_delete(request: Request) -> JSONResponse:
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    ok = voice.delete_clone()
+    if ok:
+        audit.log(getattr(request.state, "username", "-"), "voice_clone", "geloescht")
+    return JSONResponse({"ok": ok})
+
+
+@app.get("/api/voice/clone/audio")
+async def api_clone_audio() -> Response:
+    if not voice.CLONE_WAV.exists():
+        return JSONResponse({"error": "keine Aufnahme"}, status_code=404)
+    return Response(content=voice.CLONE_WAV.read_bytes(), media_type="audio/wav")
+
+
 @app.post("/api/voice/tts_voice")
 async def api_tts_voice(request: Request, data: dict = Body(...)) -> JSONResponse:
     """Sprachausgabe-Stimme (Piper) wählen. Wird bei Bedarf nachgeladen."""
