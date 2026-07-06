@@ -351,18 +351,18 @@ pre.result { white-space: pre-wrap; word-break: break-word; font-family: var(--m
 .settings-body .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 /* Trenner werden zu Karten-Grenzen: <hr> beendet eine Karte, <h3> beginnt eine */
 .settings-body hr { border: 0; height: 0; margin: 0; }
-.settings-body .set-h { font-size: 13px; font-weight: 700; letter-spacing: .01em; margin: 0 0 4px;
-  padding-top: 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
-.settings-body .set-h:first-child { border-top: 0; padding-top: 0; }
-/* Einklappbare Abschnitte (Divider sitzt jetzt auf dem Abschnitt) */
-.set-section { border-top: 1px solid var(--border); padding-top: 14px; }
-.set-section:first-child { border-top: 0; padding-top: 0; }
+.settings-body .set-h { font-size: 13px; font-weight: 700; letter-spacing: .01em; margin: 0;
+  display: flex; align-items: center; gap: 8px; }
+/* Einklappbare Abschnitte als Karten (Docker-gui-Stil) */
+.set-section { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 14px 18px; box-shadow: var(--shadow); }
 .set-toggle { cursor: pointer; user-select: none; }
 .set-toggle::after { content: "▾"; margin-left: auto; font-size: 11px; color: var(--subtle); }
 .set-toggle:hover { color: var(--accent); }
 .set-section.collapsed .set-body { display: none; }
 .set-section.collapsed .set-toggle::after { content: "▸"; }
-.set-section .set-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.set-section .set-body { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
+.ollama-only { display: flex; flex-direction: column; gap: 16px; }
 .settings-body .btn { margin-top: 10px; }
 .settings-body .row .btn { margin-top: 0; }
 .settings-body .b-cols .btn.primary, .settings-body .row .btn.primary { margin-top: 0; }

@@ -76,6 +76,28 @@ def play_wav(wav_bytes: bytes):
             pass
 
 
+def play_audio(data: bytes, mime: str = ""):
+    """WAV direkt über aplay; MP3 (ElevenLabs) über ffplay/mpg123 oder ffmpeg→aplay."""
+    is_mp3 = "mpeg" in (mime or "") or data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF)
+    if not is_mp3 or data[:4] == b"RIFF":
+        play_wav(data)
+        return
+    for player in (["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-"],
+                   ["mpg123", "-q", "-"]):
+        try:
+            subprocess.run(player, input=data, check=True)
+            return
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        wav = subprocess.run(["ffmpeg", "-i", "pipe:0", "-f", "wav", "pipe:1",
+                              "-loglevel", "quiet"], input=data,
+                             capture_output=True, check=True).stdout
+        play_wav(wav)
+    except Exception:  # noqa: BLE001
+        log("Kein MP3-Player gefunden (ffplay/mpg123/ffmpeg fehlen).")
+
+
 def main():
     try:
         import numpy as np
@@ -145,7 +167,7 @@ def main():
             try:
                 tts = http("get", "/api/voice/tts", params={"text": answer}, timeout=60)
                 if tts.status_code == 200 and tts.content:
-                    play_wav(tts.content)
+                    play_audio(tts.content, tts.headers.get("content-type", ""))
             except Exception as exc:  # noqa: BLE001
                 log("TTS-Fehler:", exc)
 

@@ -240,6 +240,42 @@ def synthesize(text: str, voice_id: str | None = None) -> bytes | None:
         return None
 
 
+# --- ElevenLabs (Cloud-Engine, optional): sehr natürlich + niedrige Latenz --
+_EL_BASE = "https://api.elevenlabs.io/v1"
+
+
+def elevenlabs_tts(text: str, key: str, voice_id: str,
+                   model: str = "eleven_flash_v2_5") -> bytes | None:
+    """Text → MP3 via ElevenLabs (flash_v2_5 = schnellstes Modell)."""
+    import requests
+    r = requests.post(f"{_EL_BASE}/text-to-speech/{voice_id}",
+                      params={"output_format": "mp3_22050_32"},
+                      headers={"xi-api-key": key},
+                      json={"text": text, "model_id": model}, timeout=30)
+    r.raise_for_status()
+    return r.content
+
+
+def elevenlabs_stt(audio_bytes: bytes, key: str, suffix: str = ".webm") -> str:
+    """Audio → Text via ElevenLabs Scribe."""
+    import requests
+    r = requests.post(f"{_EL_BASE}/speech-to-text",
+                      headers={"xi-api-key": key},
+                      files={"file": ("audio" + suffix, audio_bytes)},
+                      data={"model_id": "scribe_v1", "language_code": "de"}, timeout=60)
+    r.raise_for_status()
+    return (r.json().get("text") or "").strip()
+
+
+def elevenlabs_voices(key: str) -> list[dict]:
+    """Verfügbare ElevenLabs-Stimmen (id + Name)."""
+    import requests
+    r = requests.get(f"{_EL_BASE}/voices", headers={"xi-api-key": key}, timeout=15)
+    r.raise_for_status()
+    return [{"id": v.get("voice_id", ""), "name": v.get("name", "?")}
+            for v in r.json().get("voices", []) if v.get("voice_id")]
+
+
 # --- Sprachbefehl → Task ---------------------------------------------------
 # Reihenfolge = Priorität; erstes Match gewinnt.
 _KEYWORDS: list[tuple[str, list[str]]] = [

@@ -814,7 +814,8 @@ async def api_update_check(request: Request) -> JSONResponse:
             behind = subprocess.check_output(
                 ["git", "-C", REPO_DIR, "rev-list", "--count", f"{base}..origin/{branch}"],
                 timeout=10).decode().strip()
-            return {"behind": int(behind or 0), "branch": branch, "current": cur}
+            return {"behind": int(behind or 0), "branch": branch, "current": cur,
+                    "updater": os.path.exists(os.path.join(_STORE, "updater_ok"))}
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
 
@@ -877,6 +878,21 @@ async def api_system_update(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     audit.log(getattr(request.state, "username", "-"), "system_update", "")
     return JSONResponse({"ok": True, "note": "Update angefordert – der Host-Updater startet gleich."})
+
+
+@app.post("/api/system/harden")
+async def api_system_harden(request: Request) -> JSONResponse:
+    """Härtung am Host anstoßen (behebt 'Handlungsbedarf': Firewall/SSH/fail2ban …)."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    try:
+        with open(os.path.join(_STORE, "harden.request"), "w") as f:
+            f.write("harden")
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    audit.log(getattr(request.state, "username", "-"), "system_harden", "")
+    return JSONResponse({"ok": True, "note": "Härtung angefordert – läuft am Host, "
+                         "der Bericht aktualisiert sich in 1-2 Minuten."})
 
 
 # ---- Voice -----------------------------------------------------------------
@@ -948,10 +964,20 @@ async def api_voice_model(request: Request, data: dict = Body(...)) -> JSONRespo
 async def api_voice_command(file: UploadFile) -> JSONResponse:
     audio = await file.read()
     suffix = os.path.splitext(file.filename or "")[1] or ".webm"
-    try:
-        text = await asyncio.to_thread(voice.transcribe, audio, suffix)
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "error": f"STT fehlgeschlagen: {exc}"}, status_code=500)
+    s = settings_mod.get()
+    text = None
+    # ElevenLabs-STT (Cloud, sehr schnell) – bei Fehler Fallback auf lokales Whisper
+    if s.get("stt_engine") == "elevenlabs" and s.get("elevenlabs_key"):
+        try:
+            text = await asyncio.to_thread(voice.elevenlabs_stt, audio,
+                                           s["elevenlabs_key"], suffix)
+        except Exception:  # noqa: BLE001
+            text = None
+    if text is None:
+        try:
+            text = await asyncio.to_thread(voice.transcribe, audio, suffix)
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse({"ok": False, "error": f"STT fehlgeschlagen: {exc}"}, status_code=500)
     # Nur ausdrückliche Kommandos ("starte …") lösen einen Task aus …
     task_id = voice.match_command(text)
     if task_id:
@@ -981,6 +1007,18 @@ async def api_voice_text(request: Request, data: dict = Body(...)) -> JSONRespon
 
 @app.get("/api/voice/tts")
 async def api_voice_tts(text: str, voice_id: str = "") -> Response:
+    # ElevenLabs-Engine (wenn aktiv + Key + Stimme; voice_id-Param = Piper-Vorhören)
+    s = settings_mod.get()
+    if (not voice_id and s.get("tts_engine") == "elevenlabs"
+            and s.get("elevenlabs_key") and s.get("elevenlabs_voice")):
+        try:
+            mp3 = await asyncio.to_thread(
+                voice.elevenlabs_tts, text, s["elevenlabs_key"], s["elevenlabs_voice"],
+                s.get("elevenlabs_model") or "eleven_flash_v2_5")
+            if mp3:
+                return Response(content=mp3, media_type="audio/mpeg")
+        except Exception:  # noqa: BLE001 – Cloud down/Key falsch → lokal weitersprechen
+            pass
     try:
         vid = voice_id or None
         wav = await asyncio.to_thread(voice.synthesize, text, vid)
@@ -989,6 +1027,21 @@ async def api_voice_tts(text: str, voice_id: str = "") -> Response:
     if wav is None:
         return JSONResponse({"ok": False, "error": "TTS nicht verfügbar"}, status_code=503)
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.post("/api/voice/elevenlabs/voices")
+async def api_el_voices(request: Request, data: dict = Body(...)) -> JSONResponse:
+    """ElevenLabs-Stimmen auflisten (Key aus Eingabe oder gespeichert)."""
+    if not _require_admin(request):
+        return JSONResponse({"error": "nur Admin"}, status_code=403)
+    key = (data.get("key") or "").strip() or settings_mod.get().get("elevenlabs_key", "")
+    if not key:
+        return JSONResponse({"ok": False, "error": "kein API-Key"}, status_code=400)
+    try:
+        voices = await asyncio.to_thread(voice.elevenlabs_voices, key)
+        return JSONResponse({"ok": True, "voices": voices})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"ElevenLabs: {exc}"}, status_code=400)
 
 
 # ---- WebSocket -------------------------------------------------------------

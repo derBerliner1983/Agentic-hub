@@ -133,6 +133,9 @@ async def run_adhoc(prompt: str, provider: Provider, bus: EventBus,
     date_ctx = (f"Heute ist {_now.strftime('%A, %d.%m.%Y')}, aktuelle Uhrzeit "
                 f"{_now.strftime('%H:%M')}. Datum und Uhrzeit kennst du damit bereits – "
                 f"dafür KEINE Web-Suche nutzen. ")
+    if channel == "voice":
+        # Gesprochene Antworten: kurz halten → schnellere Generierung + schnelleres TTS
+        date_ctx += "Antworte in maximal zwei kurzen Sätzen (wird vorgelesen). "
     used_tools = hasattr(provider, "chat_with_tools")
     if used_tools:
         # Werkzeug-fähig: das Modell darf Web-Suche/Vault/MCP nutzen

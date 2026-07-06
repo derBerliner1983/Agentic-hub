@@ -17,6 +17,13 @@ _DEFAULTS = {
     "model_labels": {},   # eigene Anzeigenamen: {modellname: "Anzeigename"}
     "stt_model": os.environ.get("WHISPER_MODEL", "small"),   # Sprach-Modell (Whisper)
     "tts_voice": "de_DE-thorsten-medium",   # Sprachausgabe-Stimme (Piper)
+    # Sprach-Engine: lokal (piper/whisper) oder ElevenLabs (Cloud, API-Key, sehr
+    # natürlich + niedrige Latenz mit flash_v2_5). Fallback ist immer lokal.
+    "tts_engine": "piper",        # piper | elevenlabs
+    "stt_engine": "whisper",      # whisper | elevenlabs
+    "elevenlabs_key": "",
+    "elevenlabs_voice": "",       # ElevenLabs voice_id
+    "elevenlabs_model": "eleven_flash_v2_5",
     "rag_enabled": False,   # RAG: Vault-Wissen als Kontext in Antworten einbeziehen
     "wake_word": "",   # Freihand-Weckwort (Browser, leer = aus); danach folgt der Befehl
     "owakeword_model": "hey_jarvis",   # Server-Weckwort (openWakeWord-Modell)
@@ -59,6 +66,11 @@ def public() -> dict:
         "model_labels": d["model_labels"],
         "stt_model": d["stt_model"],
         "tts_voice": d["tts_voice"],
+        "tts_engine": d["tts_engine"],
+        "stt_engine": d["stt_engine"],
+        "elevenlabs_voice": d["elevenlabs_voice"],
+        "elevenlabs_model": d["elevenlabs_model"],
+        "elevenlabs_key_set": bool(d["elevenlabs_key"]),
         "rag_enabled": d["rag_enabled"],
         "wake_word": d["wake_word"],
         "owakeword_model": d["owakeword_model"],

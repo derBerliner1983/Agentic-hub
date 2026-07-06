@@ -59,9 +59,27 @@
       }
     });
   }
+  // Logische Reihenfolge der Abschnitte (flex order) + Streu-Elemente wegräumen
+  const SECTION_ORDER = ["Provider", "Aktives Modell", "Command Deck", "Zeitplan",
+    "Skills", "Vault-Wissen", "MCP-Server", "Sprache", "Freihand am Server",
+    "Datensicherung", "Sicherheit & System", "Sicherheit (Zwei"];
+  function orderSections(root) {
+    Array.from(root.children).forEach((el) => {
+      if (el.tagName === "HR") { el.remove(); return; }
+      let label = "";
+      if (el.classList && el.classList.contains("ollama-only")) label = "Aktives Modell";
+      else if (el.querySelector) {
+        const h = el.querySelector(".set-h");
+        label = h ? h.textContent.trim() : "";
+      }
+      const i = SECTION_ORDER.findIndex((k) => label.startsWith(k));
+      el.style.order = i === -1 ? 90 : i + 1;
+    });
+  }
   function makeCollapsible(root) {
     root.querySelectorAll(".ollama-only").forEach(collapsibleIn);  // Modell-Sektionen darin
     collapsibleIn(root);                                            // Top-Ebene
+    orderSections(root);                                            // sortieren
   }
 
   // Einmalige Spracherkennung (gleiche Engine wie der Freihand-Modus) → Transkript
@@ -89,7 +107,9 @@
     }
     const upd = s.updates_total || 0, su = s.updates_security || 0;
     const overall = s.secure ? "🟢 abgesichert" : "🟠 Handlungsbedarf";
-    return `<div class="hint2">Gesamtstatus: <b>${overall}</b> · Stand ${esc((s.ts || "").replace("T", " ").slice(0, 16))}</div>
+    const fixBtn = s.secure ? "" :
+      ' <button class="btn" id="sec-fix" style="margin:0 0 0 8px;padding:4px 12px">Jetzt beheben</button>';
+    return `<div class="hint2" style="display:flex;align-items:center">Gesamtstatus: <b>&nbsp;${overall}</b> · Stand ${esc((s.ts || "").replace("T", " ").slice(0, 16))}${fixBtn}</div>
       <div class="mgmt-row"><div class="m-title">${secDot(s.hardened === "yes")} Härtung aktiv</div>
         <span class="board-spacer"></span>
         <div class="m-sub">${secDot(s.ufw_active)} Firewall · ${secDot(s.ssh_hardened)} SSH · ${secDot(s.fail2ban_active)} fail2ban · ${secDot(s.docker_firewall)} Docker-FW</div></div>
@@ -526,6 +546,31 @@
         <input id="tts-custom" placeholder="z. B. de_DE-thorsten_emotional-medium" style="flex:1"/>
         <button class="btn" id="tts-custom-dl">⤓ Laden</button>
       </div>
+      <div class="v-head" style="margin-top:14px">ENGINE · REALISTISCH &amp; SCHNELL (ELEVENLABS)</div>
+      <div class="hint2">Optional statt Piper/Whisper: <b>ElevenLabs</b> (Cloud, API-Key nötig, kostet Guthaben) –
+        sehr natürliche Stimme + sehr schnelle Erkennung (flash v2.5 / Scribe). Fällt bei Störung automatisch auf lokal zurück.</div>
+      <div class="row" style="margin-top:6px">
+        <span class="hint2">Sprechen</span>
+        <select id="el-tts" style="max-width:170px">
+          <option value="piper" ${settings.tts_engine !== "elevenlabs" ? "selected" : ""}>Piper (lokal)</option>
+          <option value="elevenlabs" ${settings.tts_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs</option>
+        </select>
+        <span class="hint2">Verstehen</span>
+        <select id="el-stt" style="max-width:170px">
+          <option value="whisper" ${settings.stt_engine !== "elevenlabs" ? "selected" : ""}>Whisper (lokal)</option>
+          <option value="elevenlabs" ${settings.stt_engine === "elevenlabs" ? "selected" : ""}>ElevenLabs</option>
+        </select>
+      </div>
+      <label>ElevenLabs API-Key ${settings.elevenlabs_key_set ? "✓ gesetzt" : ""}
+        <input id="el-key" type="password" placeholder="${settings.elevenlabs_key_set ? "•••• (leer = behalten)" : "xi-…"}"/></label>
+      <div class="row" style="margin-top:6px">
+        <select id="el-voice" style="flex:1">
+          ${settings.elevenlabs_voice ? `<option value="${esc(settings.elevenlabs_voice)}" selected>${esc(settings.elevenlabs_voice)}</option>` : '<option value="">— Stimme wählen (erst „Stimmen laden") —</option>'}
+        </select>
+        <button class="btn" id="el-voices">Stimmen laden</button>
+        <button class="btn primary" id="el-save" style="margin-top:0">Engine speichern</button>
+      </div>
+      <div class="hint2" id="el-msg"></div>
       <label style="margin-top:12px">Freihand-Weckwort (leer = aus)</label>
       <div class="hint2">Im Freihand-Modus hört er zu; sagst du dieses Wort, wird alles danach als Befehl ausgeführt (z. B. „Computer, welches Datum ist heute?"). Braucht Chrome/Edge.</div>
       <div class="row" style="align-items:center;margin-top:6px">
@@ -774,6 +819,35 @@
       voiceDl(vid, ttsCustomDl);
     };
 
+    // ElevenLabs: Stimmen laden + Engine speichern
+    const elVoices = document.getElementById("el-voices");
+    if (elVoices) elVoices.onclick = async () => {
+      const msg = document.getElementById("el-msg");
+      msg.textContent = "lade Stimmen …";
+      const j = await fetch("/api/voice/elevenlabs/voices", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: document.getElementById("el-key").value.trim() }) })
+        .then((r) => r.json()).catch(() => ({}));
+      if (!j.ok) { msg.textContent = "Fehler: " + (j.error || "Key fehlt/falsch?"); return; }
+      const cur = settings.elevenlabs_voice || "";
+      document.getElementById("el-voice").innerHTML = (j.voices || []).map((v) =>
+        `<option value="${esc(v.id)}" ${v.id === cur ? "selected" : ""}>${esc(v.name)}</option>`).join("")
+        || '<option value="">keine Stimmen im Konto</option>';
+      msg.textContent = `${(j.voices || []).length} Stimme(n) geladen – wählen und „Engine speichern".`;
+    };
+    const elSave = document.getElementById("el-save");
+    if (elSave) elSave.onclick = async () => {
+      const patch = { tts_engine: document.getElementById("el-tts").value,
+        stt_engine: document.getElementById("el-stt").value,
+        elevenlabs_voice: document.getElementById("el-voice").value };
+      const k = document.getElementById("el-key").value.trim();
+      if (k) patch.elevenlabs_key = k;
+      await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch) }).catch(() => {});
+      toast("Sprach-Engine gespeichert.", "ok");
+      openSettings();
+    };
+
     // Weckwort einsprechen (er übernimmt, wie er dich versteht) + testen
     const wakeMsg = document.getElementById("wake-msg");
     const wakeRec = document.getElementById("wake-rec");
@@ -848,10 +922,23 @@
       const j = await fetch("/api/system/update/check").then((r) => r.json()).catch(() => ({}));
       if (j.error) { updMsg.textContent = "Prüfung fehlgeschlagen: " + j.error; return; }
       setUpdState(j.behind || 0, j.current);
+      if (j.updater === false) {
+        updMsg.innerHTML += ' <span style="color:#f59e0b">⚠ Host-Updater fehlt – einmal <code>./update.sh</code> im Terminal ausführen, dann funktioniert der Button.</span>';
+      }
     };
     if (updCheck) updCheck.onclick = runCheck;
     if (updRun) updRun.onclick = () => { if (!updRun.disabled) doUpdate(); };
     runCheck();   // beim Öffnen automatisch prüfen
+
+    // Sicherheit: 'Jetzt beheben' → Härtung am Host anstoßen
+    const secFix = document.getElementById("sec-fix");
+    if (secFix) secFix.onclick = async () => {
+      if (!confirm("Härtung jetzt ausführen? (Firewall LAN-only, SSH, fail2ban, Updates – läuft am Host)")) return;
+      secFix.disabled = true; secFix.textContent = "läuft …";
+      const j = await fetch("/api/system/harden", { method: "POST" }).then((r) => r.json()).catch(() => ({}));
+      toast(j.ok ? "Härtung läuft am Host – Bericht aktualisiert sich in 1-2 Minuten." : ("Fehler: " + (j.error || "?")), j.ok ? "ok" : "warn");
+      setTimeout(openSettings, 90000);
+    };
 
     // MFA aktivieren/deaktivieren
     const mfaOn = document.getElementById("mfa-on");
